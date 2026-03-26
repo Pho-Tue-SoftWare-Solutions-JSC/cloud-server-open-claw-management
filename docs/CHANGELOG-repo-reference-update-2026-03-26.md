@@ -1,44 +1,55 @@
 # Changelog — Repo Reference Update (2026-03-26)
 
-## Mục tiêu
-- Đồng bộ toàn bộ tài liệu và script cài đặt/cập nhật về repo hiện tại:
-  - `Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management`
-  - nhánh `main`
+## Objective
+- Synchronize all documentation and installation/update scripts to the current repo:
 
-## File đã cập nhật
+- `Pho-Tue-Software-Solutions-JSC/cloud-server-open-claw-management`
+
+- `main` branch
+
+## Updated Files
 - `README.md`
 - `bootstrap.sh`
 - `Architecture.md`
 - `docs/update-guide.md`
 
-## Nội dung thay đổi
-- Chuẩn hóa các URL `raw.githubusercontent.com` đang trỏ sang repo/nhánh cũ.
-- Đổi các tham chiếu từ:
-  - `Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management`
-  - nhánh `v2` hoặc `main` cũ liên quan
-- Sang:
-  - `Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management`
-  - nhánh `main`
+## Changes
+- Standardize the `raw.githubusercontent.com` URLs pointing to the old repo/branch.
 
-## Chi tiết
+- Change references from:
+
+- `Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management`
+
+- the old `v2` or `main` branch
+- To:
+
+- `Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management`
+
+- the `main` branch
+
+## Details
 ### `README.md`
-- Giữ lệnh cài đặt nhanh trỏ đúng về `cloud-server-open-claw-management/main/install.sh`.
+- Keep the quick install command pointing correctly to `cloud-server-open-claw-management/main/install.sh`.
 
 ### `bootstrap.sh`
-- Xác nhận `REPO_RAW` dùng đúng repo `cloud-server-open-claw-management/main`.
+- Confirm that `REPO_RAW` is using the correct `cloud-server-open-claw-management/main` repo.
 
 ### `Architecture.md`
-- Cập nhật lệnh cài đặt nhanh sang repo hiện tại.
-- Cập nhật lệnh tải `management-api/server.js` thủ công sang repo hiện tại.
+- Update the quick install command to the current repo.
+
+- Update the manual `management-api/server.js` download command to the current repo.
 
 ### `docs/update-guide.md`
-- Cập nhật `REPO_RAW` sang repo hiện tại để đồng bộ quy trình update thủ công.
+- Update `REPO_RAW` to the current repository to synchronize the manual update process.
 
-## Ghi chú
-- Các thay đổi chỉ tập trung vào tham chiếu repo/nhánh.
-- Không thay đổi logic triển khai ngoài phần đã chỉnh trước đó trong `install.sh` và `management-api/server.js`.
-- Sau rà soát, các file mục tiêu không còn tham chiếu `vps-openclaw-management/v2`.
+## Notes
+- Changes are focused only on repository/branch references.
 
-## Trạng thái
-- Hoàn tất.
-- Đã kiểm tra lại và không còn tham chiếu repo cũ trong các file mục tiêu.
+- No deployment logic changes beyond those previously modified in `install.sh` and `management-api/server.js`.
+
+- After review, target files no longer reference `vps-openclaw-management/v2`.
+
+## Status
+- Complete.
+
+- Rechecked and no longer references the old repository in target files.
