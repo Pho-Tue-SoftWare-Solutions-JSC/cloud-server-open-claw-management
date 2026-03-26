@@ -70,7 +70,7 @@ Internet
 ## Fresh Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management/v2/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main/install.sh | \
   bash -s -- --domain <DOMAIN> [--mgmt-key <KEY>]
 ```
 
@@ -150,7 +150,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/upgr
 curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/self-update
 
 # Manual
-curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management/v2/management-api/server.js \
+curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main/management-api/server.js \
   -o /opt/openclaw-mgmt/server.js
 systemctl restart openclaw-mgmt
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-// OpenClaw Management API — None Docker Compose based service management
+// OpenClaw Management API — Bare-metal service management
 // Auth: Bearer OPENCLAW_MGMT_API_KEY | Port: 9998 | Systemd: openclaw-mgmt.service
 // =============================================================================
 
@@ -15,6 +15,8 @@ const path = require('path');
 const PORT = 9998;
 const MGMT_VERSION = '4.0.0';
 const GITHUB_REPO = 'Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management';
+const GITHUB_BRANCH = 'main';
+const REPO_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}`;
 const COMPOSE_DIR = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
 const OPENCLAW_SERVICE = 'openclaw';
@@ -52,7 +54,7 @@ function getLatestVersion() {
   }
   try {
     const raw = execSync(
-      `curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/contents/version.json" -H "Accept: application/vnd.github.v3.raw" 2>/dev/null`,
+      `curl -sf --max-time 5 "https://api.github.com/repos/${GITHUB_REPO}/contents/version.json?ref=${GITHUB_BRANCH}" -H "Accept: application/vnd.github.v3.raw" 2>/dev/null`,
       { encoding: 'utf8', timeout: 8000 }
     );
     const data = JSON.parse(raw);
@@ -211,6 +213,30 @@ function removeEnvValue(key) {
   writeEnvFile(env.trim() + '\n');
 }
 
+function normalizeDomainLikeValue(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const candidate = raw
+    .replace(/^https?:\/\//i, '')
+    .split('/')[0]
+    .split(':')[0]
+    .trim()
+    .replace(/\.$/, '')
+    .toLowerCase();
+  if (!candidate || candidate === 'localhost' || candidate.startsWith('{$')) return null;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(candidate)) return null;
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(candidate)) return null;
+  return candidate;
+}
+
+function getHostnameDomain() {
+  try {
+    return normalizeDomainLikeValue(shell('hostname -f 2>/dev/null || hostname 2>/dev/null', 5000));
+  } catch {
+    return null;
+  }
+}
+
 function getDomainFromCaddyfile() {
   try {
     const caddy = fs.readFileSync(CADDYFILE, 'utf8');
@@ -220,8 +246,8 @@ function getDomainFromCaddyfile() {
       const m = line.match(/^([^\s{][^{]*)\s*\{$/);
       if (!m) continue;
       const firstHost = m[1].split(',')[0].trim();
-      if (!firstHost || firstHost.startsWith('{$') || firstHost === 'localhost') return null;
-      return firstHost;
+      const normalized = normalizeDomainLikeValue(firstHost);
+      if (normalized) return normalized;
     }
   } catch {}
   return null;
@@ -229,8 +255,12 @@ function getDomainFromCaddyfile() {
 
 function getConfiguredDomainRaw() {
   const envDomain = (getEnvValue('DOMAIN') || '').trim();
-  if (envDomain && envDomain !== 'localhost') return envDomain;
-  return getDomainFromCaddyfile();
+  if (envDomain) {
+    if (/^https?:\/\//i.test(envDomain)) return envDomain;
+    const normalizedEnv = normalizeDomainLikeValue(envDomain);
+    if (normalizedEnv) return normalizedEnv;
+  }
+  return getDomainFromCaddyfile() || getHostnameDomain();
 }
 
 // --- Config file helpers ---
@@ -1552,6 +1582,27 @@ function restartService(service = OPENCLAW_SERVICE) {
   systemctl('restart', service, 60000);
 }
 
+function getContainerStatus() {
+  return getServiceStatus(OPENCLAW_SERVICE);
+}
+
+function restartContainer(name = 'openclaw') {
+  const service = name === 'caddy' ? CADDY_SERVICE : OPENCLAW_SERVICE;
+  return restartService(service);
+}
+
+function dockerCompose(cmd, timeout = 30000) {
+  const action = String(cmd || '').trim().toLowerCase();
+  if (action === 'restart caddy') {
+    return systemctl('restart', CADDY_SERVICE, timeout);
+  }
+  if (action === 'up -d --remove-orphans') {
+    systemctl('restart', OPENCLAW_SERVICE, timeout);
+    return systemctl('restart', CADDY_SERVICE, timeout);
+  }
+  throw new Error(`Unsupported service action: ${cmd}`);
+}
+
 // =============================================================================
 // On-demand device auto-approve polling (activated by /pair endpoint)
 // Reads/writes device JSON files directly — no CLI/gateway needed
@@ -1661,8 +1712,8 @@ const server = http.createServer(async (req, res) => {
     if (!token) return json(res, 400, { ok: false, error: 'Missing token parameter' });
     _devicePollUntil = Date.now() + 60 * 1000;
     if (!_devicePollTimer) startDevicePoll();
-    const rawDomain = (getEnvValue('DOMAIN') || '').trim();
-    const domain = (rawDomain && rawDomain !== 'localhost' && !/\s/.test(rawDomain)) ? rawDomain.replace(/^https?:\/\//, '') : null;
+    const rawDomain = getConfiguredDomainRaw();
+    const domain = normalizeDomainLikeValue(rawDomain);
     const host = domain || getServerIP();
     const proto = domain ? 'https' : 'http';
     res.writeHead(302, { Location: `${proto}://${host}/#token=${encodeURIComponent(token)}` });
@@ -1880,14 +1931,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
       const serverIP = getServerIP();
-      const { status } = getContainerStatus();
-      // Domain from .env; fallback to legacy Caddyfile when .env has no DOMAIN
+      const { status } = getServiceStatus();
       const rawDomain = getConfiguredDomainRaw();
-      const domain = rawDomain && !/^https?:\/\//.test(rawDomain) ? rawDomain : null;
-      const host = rawDomain ? rawDomain.replace(/^https?:\/\//, '') : serverIP;
+      const domain = normalizeDomainLikeValue(rawDomain);
+      const host = domain || serverIP;
       const caddyTls = getEnvValue('CADDY_TLS') || '';
-      // self-signed = http not applicable; empty CADDY_TLS with domain = Let's Encrypt = https
-      const scheme = 'https';
 
       // Kiem tra DNS domain da tro dung IP chua (dung Cloudflare DoH)
       let dnsStatus = null;
@@ -1917,7 +1965,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         domain: domain,
         ip: serverIP,
-        dashboardUrl: `http://${serverIP}:${PORT}/pair?token=${token}`,
+        dashboardUrl: `http://${host}:${PORT}/pair?token=${token}`,
         gatewayToken: token,
         mgmtApiKey: sanitizeKey(getMgmtApiKey()),
         status,
@@ -2008,7 +2056,7 @@ const server = http.createServer(async (req, res) => {
 
       // Download latest Caddyfile template from repo
       try {
-        shell(`curl -fsSL 'https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main/Caddyfile?t=${Date.now()}' -o '${CADDYFILE}'`, 15000);
+        shell(`curl -fsSL '${REPO_RAW}/Caddyfile?t=${Date.now()}' -o '${CADDYFILE}'`, 15000);
       } catch (dlErr) {
         return json(res, 500, { ok: false, error: 'Failed to download Caddyfile: ' + dlErr.message });
       }
@@ -3119,8 +3167,11 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (restartTarget === 'openclaw') restartContainer('openclaw');
-      if (restartTarget === 'caddy') dockerCompose('restart caddy', 30000);
-      if (restartTarget === 'all') dockerCompose('up -d --remove-orphans', 120000);
+      if (restartTarget === 'caddy') restartService(CADDY_SERVICE);
+      if (restartTarget === 'all') {
+        restartService(OPENCLAW_SERVICE);
+        restartService(CADDY_SERVICE);
+      }
 
       return json(res, 200, {
         ok: true,
@@ -4961,7 +5012,6 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/self-update')) {
     try {
-      const REPO_RAW = 'https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management/main';
       const MGMT_API_DIR = '/opt/openclaw-mgmt';
 
       // --- Pre-download migration: extract DOMAIN from old Caddyfile before overwriting ---

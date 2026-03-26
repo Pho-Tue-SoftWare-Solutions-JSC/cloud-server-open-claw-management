@@ -88,29 +88,38 @@ wait_for_apt
 # 1b. Kiem tra DNS domain
 # =============================================================================
 DNS_READY=false
-if [ -n "${DOMAIN_ARG}" ]; then
-    DROPLET_IP=$(hostname -I | awk '{print $1}')
+EFFECTIVE_DOMAIN="${DOMAIN_ARG}"
+DROPLET_IP=$(hostname -I | awk '{print $1}')
+if [ -z "${EFFECTIVE_DOMAIN}" ]; then
+  HOSTNAME_FQDN=$(hostname -f 2>/dev/null || hostname 2>/dev/null || true)
+  HOSTNAME_FQDN=$(echo "${HOSTNAME_FQDN}" | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:]]//g; s/\.$//')
+  if echo "${HOSTNAME_FQDN}" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
+    EFFECTIVE_DOMAIN="${HOSTNAME_FQDN}"
+    log "Khong truyen --domain, su dung hostname la domain: ${EFFECTIVE_DOMAIN}"
+  fi
+fi
+if [ -n "${EFFECTIVE_DOMAIN}" ]; then
     DNS_MAX_WAIT=30
     DNS_WAITED=0
-    log "Kiem tra DNS ${DOMAIN_ARG} (doi toi da ${DNS_MAX_WAIT}s)..."
+  log "Kiem tra DNS ${EFFECTIVE_DOMAIN} (doi toi da ${DNS_MAX_WAIT}s)..."
 
     while [ $DNS_WAITED -lt $DNS_MAX_WAIT ]; do
-        RESOLVED=$(curl -sf "https://1.1.1.1/dns-query?name=${DOMAIN_ARG}&type=A" -H "accept: application/dns-json" 2>/dev/null \
+    RESOLVED=$(curl -sf "https://1.1.1.1/dns-query?name=${EFFECTIVE_DOMAIN}&type=A" -H "accept: application/dns-json" 2>/dev/null \
             | grep -oE '"data":[ ]*"[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"' | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+') || true
 
         if [ "${RESOLVED}" = "${DROPLET_IP}" ]; then
             DNS_READY=true
-            log "DNS OK: ${DOMAIN_ARG} -> ${DROPLET_IP}. Se dung Let's Encrypt SSL."
+      log "DNS OK: ${EFFECTIVE_DOMAIN} -> ${DROPLET_IP}. Se dung Let's Encrypt SSL."
             break
         fi
 
-        log "DNS chua san sang: ${DOMAIN_ARG} -> ${RESOLVED:-<empty>} (can ${DROPLET_IP}). Doi 5 giay... (${DNS_WAITED}s/${DNS_MAX_WAIT}s)"
+    log "DNS chua san sang: ${EFFECTIVE_DOMAIN} -> ${RESOLVED:-<empty>} (can ${DROPLET_IP}). Doi 5 giay... (${DNS_WAITED}s/${DNS_MAX_WAIT}s)"
         sleep 5
         DNS_WAITED=$((DNS_WAITED + 5))
     done
 
     if [ "${DNS_READY}" = "false" ]; then
-        log "DNS ${DOMAIN_ARG} chua resolve sau ${DNS_MAX_WAIT}s. Dung self-signed cert truoc."
+    log "DNS ${EFFECTIVE_DOMAIN} chua resolve sau ${DNS_MAX_WAIT}s. Dung self-signed cert truoc."
     fi
 fi
 
@@ -221,7 +230,7 @@ if [ -n "${MGMT_API_KEY_ARG}" ]; then
     MGMT_API_KEY="${MGMT_API_KEY_ARG}"
     log "Su dung MGMT API key tu HostBill."
 else
-    MGMT_API_KEY=$(openssl rand -hex 32)
+  MGMT_API_KEY=$(openssl rand -hex 16)
     log "Tu sinh MGMT API key."
 fi
 
@@ -229,13 +238,11 @@ fi
 # 9. Tao file .env
 # =============================================================================
 log "Tao file .env..."
-DROPLET_IP=$(hostname -I | awk '{print $1}')
-
-if [ -n "${DOMAIN_ARG}" ] && [ "${DNS_READY}" = "true" ]; then
-    CADDY_DOMAIN="${DOMAIN_ARG}"
+if [ -n "${EFFECTIVE_DOMAIN}" ] && [ "${DNS_READY}" = "true" ]; then
+  CADDY_DOMAIN="${EFFECTIVE_DOMAIN}"
     CADDY_TLS_VALUE=""
-elif [ -n "${DOMAIN_ARG}" ]; then
-    CADDY_DOMAIN="${DOMAIN_ARG}"
+elif [ -n "${EFFECTIVE_DOMAIN}" ]; then
+  CADDY_DOMAIN="${EFFECTIVE_DOMAIN}"
     CADDY_TLS_VALUE="tls internal"
 else
     CADDY_DOMAIN="http://${DROPLET_IP}"
@@ -455,12 +462,12 @@ done
 
 # Copy default config (Anthropic) va inject gateway token
 cp /etc/openclaw/config/anthropic.json ${INSTALL_DIR}/config/openclaw.json
-if [ -n "${DOMAIN_ARG}" ]; then
+if [ -n "${EFFECTIVE_DOMAIN}" ]; then
     ORIGINS_FILTER='.gateway.controlUi.allowedOrigins = ["https://\($domain)", "http://\($domain)", "http://localhost", "http://127.0.0.1"]'
 else
     ORIGINS_FILTER='.gateway.controlUi.allowedOrigins = ["http://localhost", "http://127.0.0.1"]'
 fi
-jq --arg token "${GATEWAY_TOKEN}" --arg domain "${DOMAIN_ARG}" '
+jq --arg token "${GATEWAY_TOKEN}" --arg domain "${EFFECTIVE_DOMAIN}" '
   .gateway.auth.token = $token |
   .gateway.controlUi.allowedOrigins = (
     if $domain != "" then ["https://\($domain)", "http://\($domain)", "http://localhost", "http://127.0.0.1"]
@@ -604,16 +611,16 @@ apt-get -qqy autoclean
 log "=== Cai dat OpenClaw hoan tat! ==="
 log ""
 log "=========================================="
-DASHBOARD_HOST="${DOMAIN_ARG:-${DROPLET_IP}}"
-if [ -n "${DOMAIN_ARG}" ]; then
+DASHBOARD_HOST="${EFFECTIVE_DOMAIN:-${DROPLET_IP}}"
+if [ -n "${EFFECTIVE_DOMAIN}" ]; then
     DASHBOARD_SCHEME="https"
 else
     DASHBOARD_SCHEME="http"
 fi
-log "  Dashboard: http://${DROPLET_IP}:${MGMT_API_PORT}/pair?token=${GATEWAY_TOKEN}"
+log "  Dashboard: ${DASHBOARD_SCHEME}://${DASHBOARD_HOST}:${MGMT_API_PORT}/pair?token=${GATEWAY_TOKEN}"
 log "  Gateway Token: ${GATEWAY_TOKEN}"
 log ""
-log "  Management API: http://${DROPLET_IP}:${MGMT_API_PORT}"
+log "  Management API: ${DASHBOARD_SCHEME}://${DASHBOARD_HOST}:${MGMT_API_PORT}"
 log "  MGMT API Key:   ${MGMT_API_KEY}"
 log "=========================================="
 log ""

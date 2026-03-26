@@ -61,7 +61,7 @@ ssh root@<VPS_IP>
 ### Step 1: Download latest files from GitHub
 
 ```bash
-REPO_RAW="https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management/v2"
+REPO_RAW="https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main"
 
 # Management API
 curl -fsSL "$REPO_RAW/management-api/server.js" -o /opt/openclaw-mgmt/server.js
