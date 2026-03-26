@@ -17,13 +17,13 @@ const MGMT_VERSION = '4.0.0';
 const GITHUB_REPO = 'Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management';
 const GITHUB_BRANCH = 'main';
 const REPO_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}`;
-const COMPOSE_DIR = '/opt/openclaw';
+const OPENCLAW_HOME = '/opt/openclaw';
 const OPENCLAW_BIN = 'openclaw';
 const OPENCLAW_SERVICE = 'openclaw';
 const CADDY_SERVICE = 'caddy';
-const CONFIG_DIR = `${COMPOSE_DIR}/config`;
-const ENV_FILE = `${COMPOSE_DIR}/.env`;
-const CADDYFILE = `${COMPOSE_DIR}/Caddyfile`;
+const CONFIG_DIR = `${OPENCLAW_HOME}/config`;
+const ENV_FILE = `${OPENCLAW_HOME}/.env`;
+const CADDYFILE = `${OPENCLAW_HOME}/Caddyfile`;
 const TEMPLATES_DIR = '/etc/openclaw/config';
 const AUTH_PROFILES_DIR = `${CONFIG_DIR}/agents/main/agent`;
 const AUTH_PROFILES_FILE = `${AUTH_PROFILES_DIR}/auth-profiles.json`;
@@ -1560,7 +1560,7 @@ function systemctl(action, service = OPENCLAW_SERVICE, timeout = 30000) {
 }
 
 function openclawExec(cmd, timeout = 30000) {
-  return shell(`HOME=${COMPOSE_DIR} ${OPENCLAW_BIN} ${cmd}`, timeout);
+  return shell(`HOME=${OPENCLAW_HOME} ${OPENCLAW_BIN} ${cmd}`, timeout);
 }
 
 function getServiceStatus(service = OPENCLAW_SERVICE) {
@@ -1582,16 +1582,16 @@ function restartService(service = OPENCLAW_SERVICE) {
   systemctl('restart', service, 60000);
 }
 
-function getContainerStatus() {
+function getManagedServiceStatus() {
   return getServiceStatus(OPENCLAW_SERVICE);
 }
 
-function restartContainer(name = 'openclaw') {
+function restartManagedService(name = 'openclaw') {
   const service = name === 'caddy' ? CADDY_SERVICE : OPENCLAW_SERVICE;
   return restartService(service);
 }
 
-function dockerCompose(cmd, timeout = 30000) {
+function runServiceAction(cmd, timeout = 30000) {
   const action = String(cmd || '').trim().toLowerCase();
   if (action === 'restart caddy') {
     return systemctl('restart', CADDY_SERVICE, timeout);
@@ -1771,7 +1771,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     const proc = spawn(parsed.argv[0], parsed.argv.slice(1), {
-      cwd: COMPOSE_DIR,
+      cwd: OPENCLAW_HOME,
       env: { ...process.env, TERM: 'xterm-256color', FORCE_COLOR: '1' },
     });
 
@@ -1981,7 +1981,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // GET /api/status — Trang thai container
+  // GET /api/status — Trang thai services OpenClaw/Caddy
   // =========================================================================
   if (route(req, 'GET', '/api/status')) {
     try {
@@ -2114,7 +2114,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/restart — Restart container
+  // POST /api/restart — Restart OpenClaw service
   // =========================================================================
   if (route(req, 'POST', '/api/restart')) {
     try {
@@ -2126,7 +2126,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/stop — Stop container
+  // POST /api/stop — Stop OpenClaw service
   // =========================================================================
   if (route(req, 'POST', '/api/stop')) {
     try {
@@ -2136,7 +2136,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/start — Start container
+  // POST /api/start — Start OpenClaw service
   // =========================================================================
   if (route(req, 'POST', '/api/start')) {
     try {
@@ -2175,8 +2175,8 @@ const server = http.createServer(async (req, res) => {
       systemctl('stop', OPENCLAW_SERVICE, 60000);
 
       // Keep .env but reset config and data
-      try { execSync(`rm -rf ${CONFIG_DIR}/openclaw.json ${COMPOSE_DIR}/data`); } catch {}
-      try { execSync(`mkdir -p ${CONFIG_DIR} ${COMPOSE_DIR}/data`); } catch {}
+      try { execSync(`rm -rf ${CONFIG_DIR}/openclaw.json ${OPENCLAW_HOME}/data`); } catch {}
+      try { execSync(`mkdir -p ${CONFIG_DIR} ${OPENCLAW_HOME}/data`); } catch {}
 
       // Copy default config
       try { execSync(`cp ${TEMPLATES_DIR}/anthropic.json ${CONFIG_DIR}/openclaw.json`); } catch {}
@@ -2201,7 +2201,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // GET /api/logs — Container logs
+  // GET /api/logs — Service logs
   // =========================================================================
   if (route(req, 'GET', '/api/logs')) {
     try {
@@ -3107,7 +3107,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(merged);
-      if (body.restart !== false) restartContainer('openclaw');
+      if (body.restart !== false) restartManagedService('openclaw');
 
       return json(res, 200, {
         ok: true,
@@ -3142,7 +3142,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(config);
-      if (body.restart !== false) restartContainer('openclaw');
+      if (body.restart !== false) restartManagedService('openclaw');
 
       return json(res, 200, {
         ok: true,
@@ -3166,7 +3166,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: `Invalid restartTarget. Use: ${allowedTargets.join(', ')}` });
       }
 
-      if (restartTarget === 'openclaw') restartContainer('openclaw');
+      if (restartTarget === 'openclaw') restartManagedService('openclaw');
       if (restartTarget === 'caddy') restartService(CADDY_SERVICE);
       if (restartTarget === 'all') {
         restartService(OPENCLAW_SERVICE);
@@ -3877,7 +3877,7 @@ const server = http.createServer(async (req, res) => {
       writeConfig(config);
 
       const restarted = body.restart !== false;
-      if (restarted) restartContainer('openclaw');
+      if (restarted) restartManagedService('openclaw');
 
       return json(res, 200, {
         ok: true,
@@ -3953,7 +3953,7 @@ const server = http.createServer(async (req, res) => {
       writeConfig(config);
 
       const restarted = body.restart !== false;
-      if (restarted) restartContainer('openclaw');
+      if (restarted) restartManagedService('openclaw');
 
       return json(res, 200, { ok: true, channel: 'zalo', restarted, state: buildZaloChannelState() });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4611,7 +4611,7 @@ const server = http.createServer(async (req, res) => {
 
       config.skills.entries[skillKey] = current;
       writeConfig(config);
-      if (body.restart !== false) restartContainer('openclaw');
+      if (body.restart !== false) restartManagedService('openclaw');
 
       return json(res, 200, {
         ok: true,
@@ -4952,7 +4952,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/cli — CLI Proxy (chay lenh CLI trong container)
+  // POST /api/cli — CLI Proxy (chay lenh OpenClaw truc tiep tren host)
   // =========================================================================
   if (route(req, 'POST', '/api/cli')) {
     try {
@@ -5039,7 +5039,7 @@ const server = http.createServer(async (req, res) => {
       ];
       const files = [
         { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
-        { url: `${REPO_RAW}/Caddyfile`, dest: `${COMPOSE_DIR}/Caddyfile` },
+        { url: `${REPO_RAW}/Caddyfile`, dest: `${OPENCLAW_HOME}/Caddyfile` },
         ...configTemplates.map(t => ({ url: `${REPO_RAW}/config/${t}.json`, dest: `${TEMPLATES_DIR}/${t}.json` }))
       ];
 
@@ -5170,7 +5170,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       setAgentApiKey(agentId, providerConfig.authProfileProvider, apiKey);
-      restartContainer('openclaw');
+      restartManagedService('openclaw');
 
       return json(res, 200, { ok: true, agentId, provider, apiKey: sanitizeKey(apiKey) });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -5415,7 +5415,7 @@ const server = http.createServer(async (req, res) => {
         if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true, force: true });
       }
 
-      restartContainer('openclaw');
+      restartManagedService('openclaw');
 
       return json(res, 200, { ok: true, id: agentId, removed: true });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -5491,7 +5491,7 @@ const server = http.createServer(async (req, res) => {
       writeAgentAuth(id, { profiles: {} });
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartManagedService('openclaw');
 
       return json(res, 201, { ok: true, agent: newAgent });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -5568,7 +5568,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       writeConfig(config);
-      restartContainer('openclaw');
+      restartManagedService('openclaw');
 
       return json(res, 200, { ok: true, index, binding: config.bindings[index] });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }

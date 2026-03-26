@@ -52,7 +52,7 @@
           ]
         },
         {
-          "name": "Get Container Status",
+          "name": "Get Service Status",
           "request": {
             "method": "GET",
             "header": [],
@@ -61,7 +61,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "status"]
             },
-            "description": "Get container status for OpenClaw and Caddy, including version and gateway port."
+            "description": "Get systemd service status for OpenClaw and Caddy, including version and gateway port."
           },
           "response": [
             {
@@ -82,14 +82,14 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "system"]
             },
-            "description": "Get system info: hostname, IP, OS, uptime, CPU load, memory, disk usage, Docker/Node versions."
+            "description": "Get system info: hostname, IP, OS, uptime, CPU load, memory, disk usage, Node.js version, and OpenClaw CLI version."
           },
           "response": [
             {
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"hostname\": \"openclaw-vps\",\n  \"ip\": \"1.2.3.4\",\n  \"os\": \"Ubuntu 24.04 LTS\",\n  \"uptime\": 86400,\n  \"loadAvg\": [0.5, 0.3, 0.2],\n  \"memory\": {\n    \"total\": \"2048MB\",\n    \"free\": \"1024MB\",\n    \"used\": \"1024MB\"\n  },\n  \"disk\": {\n    \"total\": \"50G\",\n    \"used\": \"10G\",\n    \"available\": \"38G\",\n    \"usagePercent\": \"21%\"\n  },\n  \"nodeVersion\": \"v22.0.0\",\n  \"dockerVersion\": \"Docker version 27.0.0\"\n}"
+              "body": "{\n  \"ok\": true,\n  \"hostname\": \"openclaw-vps\",\n  \"ip\": \"1.2.3.4\",\n  \"os\": \"Ubuntu 24.04 LTS\",\n  \"uptime\": 86400,\n  \"loadAvg\": [0.5, 0.3, 0.2],\n  \"memory\": {\n    \"total\": \"2048MB\",\n    \"free\": \"1024MB\",\n    \"used\": \"1024MB\"\n  },\n  \"disk\": {\n    \"total\": \"50G\",\n    \"used\": \"10G\",\n    \"available\": \"38G\",\n    \"usagePercent\": \"21%\"\n  },\n  \"nodeVersion\": \"v22.0.0\",\n  \"openclawVersion\": \"OpenClaw CLI 0.92.1\"\n}"
             }
           ]
         }
@@ -108,14 +108,14 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "domain"]
             },
-            "description": "Get current domain configuration, SSL status, and Caddyfile content."
+            "description": "Get current domain configuration, server IP, and SSL mode derived from the active environment/Caddy setup."
           },
           "response": [
             {
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ip\": \"1.2.3.4\",\n  \"ssl\": true,\n  \"selfSignedSSL\": false,\n  \"caddyfile\": \"openclaw.example.com {\\n    tls {\\n        issuer acme ...\\n    }\\n    reverse_proxy openclaw:18789\\n}\"\n}"
+              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ip\": \"1.2.3.4\",\n  \"ssl\": true,\n  \"selfSignedSSL\": false\n}"
             }
           ]
         },
@@ -170,14 +170,14 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "version"]
             },
-            "description": "Get current version, Docker image name, and image digest."
+            "description": "Get configured OpenClaw release channel and the installed OpenClaw CLI version."
           },
           "response": [
             {
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"version\": \"latest\",\n  \"image\": \"ghcr.io/openclaw/openclaw:latest\",\n  \"digest\": \"sha256:abc123...\"\n}"
+              "body": "{\n  \"ok\": true,\n  \"version\": \"latest\",\n  \"clawVersion\": \"OpenClaw CLI 0.92.1\"\n}"
             }
           ]
         },
@@ -191,7 +191,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "upgrade"]
             },
-            "description": "Pull latest Docker image and recreate container. Runs asynchronously (returns 202). Check /api/status for progress."
+            "description": "Update the global OpenClaw package with npm and restart the OpenClaw systemd service. Runs asynchronously (returns 202). Check /api/status for progress."
           },
           "response": [
             {
@@ -217,7 +217,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "restart"]
             },
-            "description": "Restart the OpenClaw container."
+            "description": "Restart the OpenClaw systemd service."
           },
           "response": [
             {
@@ -238,7 +238,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "stop"]
             },
-            "description": "Stop the OpenClaw container."
+            "description": "Stop the OpenClaw systemd service."
           },
           "response": [
             {
@@ -259,7 +259,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "start"]
             },
-            "description": "Start the OpenClaw container."
+            "description": "Start the OpenClaw systemd service."
           },
           "response": [
             {
@@ -280,7 +280,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "rebuild"]
             },
-            "description": "Full recreate: docker compose down + up -d. Recreates all containers."
+            "description": "Restart both managed services: OpenClaw and Caddy."
           },
           "response": [
             {
@@ -354,7 +354,7 @@
                 }
               ]
             },
-            "description": "Get container logs. Supports query params: lines (1-1000), service (openclaw|caddy)."
+            "description": "Get recent systemd logs. Supports query params: lines (1-1000), service (openclaw|caddy)."
           },
           "response": [
             {
@@ -410,7 +410,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "provider"]
             },
-            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, restarts container.\n\nProviders: anthropic, openai, gemini\n\nModel parameter is optional — if omitted, uses provider's default model."
+            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, and restarts the OpenClaw service.\n\nProviders: anthropic, openai, gemini\n\nModel parameter is optional — if omitted, uses provider's default model."
           },
           "response": [
             {
@@ -440,7 +440,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "api-key"]
             },
-            "description": "Update API key for a provider. Sets the key in .env and restarts the container.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GEMINI_API_KEY)"
+            "description": "Update API key for a provider. Sets the key in `.env`/auth profiles and restarts the OpenClaw service.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GEMINI_API_KEY)"
           },
           "response": [
             {
@@ -697,7 +697,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "telegram"]
             },
-            "description": "Add or update a messaging channel token. Restarts container after applying.\n\nChannels: telegram, discord, slack, zalo\n\nFor Slack, you can also pass appToken in the body."
+            "description": "Add or update a messaging channel token. Restarts the OpenClaw service after applying.\n\nChannels: telegram, discord, slack, zalo\n\nFor Slack, you can also pass appToken in the body."
           },
           "response": [
             {
@@ -718,7 +718,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "telegram"]
             },
-            "description": "Remove a messaging channel. Deletes the token from .env and restarts container.\n\nChannels: telegram, discord, slack, zalo"
+            "description": "Remove a messaging channel. Deletes the token from `.env` and restarts the OpenClaw service.\n\nChannels: telegram, discord, slack, zalo"
           },
           "response": [
             {
@@ -839,7 +839,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "zalo", "plugin", "install"]
             },
-            "description": "Install the Zalo plugin inside the OpenClaw container and enable the `zalo` plugin entry in local config. Supported specs: `@openclaw/zalo`, `./extensions/zalo`."
+            "description": "Install the Zalo plugin into the local OpenClaw runtime and enable the `zalo` plugin entry in local config. Supported specs: `@openclaw/zalo`, `./extensions/zalo`."
           },
           "response": []
         },
@@ -1234,7 +1234,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"agentId\": \"main\",\n  \"skillKey\": \"custom-vps-audit\",\n  \"title\": \"Custom VPS Audit\",\n  \"description\": \"Detailed skill for auditing VPS OpenClaw setup health and configuration.\",\n  \"summary\": \"Use this skill when the user asks for a structured OpenClaw VPS audit, deployment verification, or support checklist.\",\n  \"metadata\": {\n    \"emoji\": \"🛠️\",\n    \"homepage\": \"https://example.com/internal-skill-docs\",\n    \"skillKey\": \"custom-vps-audit\",\n    \"requires\": {\n      \"bins\": [\"docker\", \"curl\"],\n      \"config\": [\"gateway.controlUi.enabled\"]\n    },\n    \"primaryEnv\": \"OPENCLAW_GATEWAY_TOKEN\"\n  },\n  \"activation\": [\n    \"Use when the user asks for a VPS audit or operational readiness report.\",\n    \"Use when support staff need a repeatable troubleshooting checklist.\"\n  ],\n  \"inputs\": [\n    \"Deployment host or domain\",\n    \"Relevant agentId if not using the default agent\",\n    \"Any required credentials or API scope limitations\"\n  ],\n  \"workflow\": [\n    \"Review service status, system metrics, domain/SSL state, and active provider config.\",\n    \"Check skills, channels, env overrides, and bindings that affect routing.\",\n    \"Summarize risks, missing config, and recommended next actions in priority order.\"\n  ],\n  \"outputs\": [\n    \"Health summary\",\n    \"Detected issues\",\n    \"Recommended remediation steps\"\n  ],\n  \"commandExamples\": [\n    \"Audit the current OpenClaw VPS deployment.\",\n    \"Check if the gateway token and provider setup look healthy.\"\n  ],\n  \"configNotes\": [\n    \"Document required `skills.entries.custom-vps-audit` overrides here.\",\n    \"Mention any environment variables injected for host-only execution.\"\n  ],\n  \"safetyNotes\": [\n    \"Do not rotate keys automatically.\",\n    \"Ask before any destructive change or service restart.\"\n  ],\n  \"troubleshooting\": [\n    \"If metrics disagree, compare `/api/status`, `/api/system`, and recent logs.\",\n    \"If a provider is configured but health fails, test the key separately before changing it.\"\n  ]\n}"
+              "raw": "{\n  \"agentId\": \"main\",\n  \"skillKey\": \"custom-vps-audit\",\n  \"title\": \"Custom VPS Audit\",\n  \"description\": \"Detailed skill for auditing VPS OpenClaw setup health and configuration.\",\n  \"summary\": \"Use this skill when the user asks for a structured OpenClaw VPS audit, deployment verification, or support checklist.\",\n  \"metadata\": {\n    \"emoji\": \"🛠️\",\n    \"homepage\": \"https://example.com/internal-skill-docs\",\n    \"skillKey\": \"custom-vps-audit\",\n    \"requires\": {\n      \"bins\": [\"openclaw\", \"curl\"],\n      \"config\": [\"gateway.controlUi.enabled\"]\n    },\n    \"primaryEnv\": \"OPENCLAW_GATEWAY_TOKEN\"\n  },\n  \"activation\": [\n    \"Use when the user asks for a VPS audit or operational readiness report.\",\n    \"Use when support staff need a repeatable troubleshooting checklist.\"\n  ],\n  \"inputs\": [\n    \"Deployment host or domain\",\n    \"Relevant agentId if not using the default agent\",\n    \"Any required credentials or API scope limitations\"\n  ],\n  \"workflow\": [\n    \"Review service status, system metrics, domain/SSL state, and active provider config.\",\n    \"Check skills, channels, env overrides, and bindings that affect routing.\",\n    \"Summarize risks, missing config, and recommended next actions in priority order.\"\n  ],\n  \"outputs\": [\n    \"Health summary\",\n    \"Detected issues\",\n    \"Recommended remediation steps\"\n  ],\n  \"commandExamples\": [\n    \"Audit the current OpenClaw VPS deployment.\",\n    \"Check if the gateway token and provider setup look healthy.\"\n  ],\n  \"configNotes\": [\n    \"Document required `skills.entries.custom-vps-audit` overrides here.\",\n    \"Mention any environment variables injected for host-only execution.\"\n  ],\n  \"safetyNotes\": [\n    \"Do not rotate keys automatically.\",\n    \"Ask before any destructive change or service restart.\"\n  ],\n  \"troubleshooting\": [\n    \"If metrics disagree, compare `/api/status`, `/api/system`, and recent logs.\",\n    \"If a provider is configured but health fails, test the key separately before changing it.\"\n  ]\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/skills/custom",
@@ -1264,7 +1264,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"agentId\": \"main\",\n  \"title\": \"Custom VPS Audit\",\n  \"summary\": \"Expanded workflow for triaging deployment issues, provider drift, and missing runtime dependencies.\",\n  \"workflow\": [\n    \"Capture baseline system and container status.\",\n    \"Inspect gateway config, skills, channels, and bindings.\",\n    \"Return a prioritized findings list with remediation suggestions.\"\n  ],\n  \"safetyNotes\": [\n    \"Never delete data without explicit approval.\",\n    \"Mask all keys and secrets in the response.\"\n  ]\n}"
+              "raw": "{\n  \"agentId\": \"main\",\n  \"title\": \"Custom VPS Audit\",\n  \"summary\": \"Expanded workflow for triaging deployment issues, provider drift, and missing runtime dependencies.\",\n  \"workflow\": [\n    \"Capture baseline system and service status.\",\n    \"Inspect gateway config, skills, channels, and bindings.\",\n    \"Return a prioritized findings list with remediation suggestions.\"\n  ],\n  \"safetyNotes\": [\n    \"Never delete data without explicit approval.\",\n    \"Mask all keys and secrets in the response.\"\n  ]\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/skills/custom/custom-vps-audit",
@@ -1365,7 +1365,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"OpenClaw Incident Triage\",\n  \"description\": \"Detailed custom skill for incident triage and runtime investigation.\",\n  \"summary\": \"Use this skill when the user asks for a structured incident response workflow.\",\n  \"metadata\": {\n    \"emoji\": \"🚨\",\n    \"requires\": {\n      \"bins\": [\"docker\", \"jq\"],\n      \"config\": [\"gateway.auth.token\"]\n    }\n  },\n  \"activation\": [\n    \"Use when production behavior changes unexpectedly.\",\n    \"Use when support needs a repeatable triage checklist.\"\n  ],\n  \"inputs\": [\n    \"Incident time window\",\n    \"Affected services\",\n    \"Known error symptoms\"\n  ],\n  \"workflow\": [\n    \"Capture current health and recent logs.\",\n    \"Review gateway config, channels, and recent deployments.\",\n    \"Return findings, likely causes, and safe next actions.\"\n  ],\n  \"outputs\": [\n    \"Incident summary\",\n    \"Evidence collected\",\n    \"Recommended next steps\"\n  ],\n  \"safetyNotes\": [\n    \"Do not restart services without approval.\",\n    \"Mask secrets and tokens in all outputs.\"\n  ],\n  \"troubleshooting\": [\n    \"If evidence conflicts, compare status endpoints with container logs.\"\n  ]\n}"
+              "raw": "{\n  \"title\": \"OpenClaw Incident Triage\",\n  \"description\": \"Detailed custom skill for incident triage and runtime investigation.\",\n  \"summary\": \"Use this skill when the user asks for a structured incident response workflow.\",\n  \"metadata\": {\n    \"emoji\": \"🚨\",\n    \"requires\": {\n      \"bins\": [\"openclaw\", \"jq\"],\n      \"config\": [\"gateway.auth.token\"]\n    }\n  },\n  \"activation\": [\n    \"Use when production behavior changes unexpectedly.\",\n    \"Use when support needs a repeatable triage checklist.\"\n  ],\n  \"inputs\": [\n    \"Incident time window\",\n    \"Affected services\",\n    \"Known error symptoms\"\n  ],\n  \"workflow\": [\n    \"Capture current health and recent logs.\",\n    \"Review gateway config, channels, and recent deployments.\",\n    \"Return findings, likely causes, and safe next actions.\"\n  ],\n  \"outputs\": [\n    \"Incident summary\",\n    \"Evidence collected\",\n    \"Recommended next steps\"\n  ],\n  \"safetyNotes\": [\n    \"Do not restart services without approval.\",\n    \"Mask secrets and tokens in all outputs.\"\n  ],\n  \"troubleshooting\": [\n    \"If evidence conflicts, compare status endpoints with service logs.\"\n  ]\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/skills/custom/render",
@@ -3599,7 +3599,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "cli"]
             },
-            "description": "Execute an OpenClaw CLI command inside the container.\n\nRuns: docker compose exec openclaw node dist/index.js <command>\n\nSecurity: Characters ; & | ` $ ( ) { } are blocked.\n\nExamples:\n- models scan\n- config get\n- config set agents.defaults.model.primary anthropic/claude-sonnet-4\n- channels list\n- gateway status"
+            "description": "Execute an OpenClaw CLI command directly on the host runtime.\n\nRuns: `openclaw <command>` with `HOME=/opt/openclaw`.\n\nSecurity: Characters ; & | ` $ ( ) { } are blocked.\n\nExamples:\n- models scan\n- config get\n- config set agents.defaults.model.primary anthropic/claude-sonnet-4\n- channels list\n- gateway status"
           },
           "response": [
             {
@@ -3631,14 +3631,14 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "self-update"]
             },
-            "description": "Download latest Management API (server.js), docker-compose.yml, and config templates from GitHub. Restarts the Management API service after update.\n\nUpdated files:\n- /opt/openclaw-mgmt/server.js\n- /opt/openclaw/docker-compose.yml\n- /etc/openclaw/config/*.json (anthropic, openai, gemini)"
+            "description": "Download the latest Management API (`server.js`), `Caddyfile`, and provider config templates from GitHub. Restarts the Management API service after update.\n\nUpdated files:\n- /opt/openclaw-mgmt/server.js\n- /opt/openclaw/Caddyfile\n- /etc/openclaw/config/*.json"
           },
           "response": [
             {
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"message\": \"Update complete. Management API restarting...\",\n  \"files\": [\n    { \"file\": \"/opt/openclaw-mgmt/server.js\", \"ok\": true },\n    { \"file\": \"/opt/openclaw/docker-compose.yml\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/anthropic.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/openai.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/gemini.json\", \"ok\": true }\n  ]\n}"
+              "body": "{\n  \"ok\": true,\n  \"message\": \"Update complete. Management API restarting...\",\n  \"files\": [\n    { \"file\": \"/opt/openclaw-mgmt/server.js\", \"ok\": true },\n    { \"file\": \"/opt/openclaw/Caddyfile\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/anthropic.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/openai.json\", \"ok\": true },\n    { \"file\": \"/etc/openclaw/config/openai-codex.json\", \"ok\": true }\n  ]\n}"
             }
           ]
         }
