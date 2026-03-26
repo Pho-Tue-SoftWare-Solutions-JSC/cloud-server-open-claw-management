@@ -17,7 +17,7 @@ Deploy and manage [OpenClaw](https://github.com/openclaw/openclaw) on a VPS **wi
 ## Quick Start
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/vps-openclaw-management/v2/install.sh | \
+curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main/install.sh | \
   bash -s -- --domain <DOMAIN_NAME> [--mgmt-key <KEY>]
 ```
 
