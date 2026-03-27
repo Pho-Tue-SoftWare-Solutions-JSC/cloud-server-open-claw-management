@@ -1,3 +1,12 @@
+{
+    cert_issuer acme {
+        dir https://acme-v02.api.letsencrypt.org/directory
+    }
+    cert_issuer acme {
+        dir https://acme.zerossl.com/v2/DV90
+    }
+}
+
 {$DOMAIN:localhost} {
     {$CADDY_TLS:tls internal}
 

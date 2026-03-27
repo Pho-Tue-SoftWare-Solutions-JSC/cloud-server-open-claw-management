@@ -2259,7 +2259,7 @@ const server = http.createServer(async (req, res) => {
 
       // SSL status (derived from .env)
       const sslMode = domain
-        ? (caddyTls === 'tls internal' ? 'self-signed' : 'letsencrypt')
+        ? (caddyTls === 'tls internal' ? 'self-signed' : 'acme')
         : 'none';
 
       const latestVersion = getLatestVersion();
@@ -2278,7 +2278,7 @@ const server = http.createServer(async (req, res) => {
         mgmtUpdateAvailable: latestVersion ? latestVersion !== MGMT_VERSION : false,
         ssl: sslMode,
         dnsStatus,
-        ...(dnsStatus === 'not_pointed' ? { dnsWarning: `DNS for ${domain} does not point to ${serverIP}. Update your A record to enable Let's Encrypt SSL.` } : {})
+        ...(dnsStatus === 'not_pointed' ? { dnsWarning: `DNS for ${domain} does not point to ${serverIP}. Update your A record to enable ACME SSL (Let's Encrypt, fallback ZeroSSL).` } : {})
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2317,7 +2317,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         domain: isDomain ? domain : null,
         ip: getServerIP(),
-        ssl: isDomain && !caddyTls,  // real domain + no explicit TLS = auto Let's Encrypt
+        ssl: isDomain && !caddyTls,  // real domain + no explicit TLS = auto ACME (Let's Encrypt, fallback ZeroSSL)
         selfSignedSSL: caddyTls === 'tls internal',
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2353,7 +2353,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: `DNS for ${domain} resolves to ${resolvedIPs.join(', ')} — does not match server IP (${serverIP}).` });
       }
 
-      // Update .env with new domain (Caddy auto Let's Encrypt for real domains)
+      // Update .env with new domain (Caddy auto ACME for real domains; Let's Encrypt with ZeroSSL fallback)
       setEnvValue('DOMAIN', domain);
       setEnvValue('CADDY_TLS', '');
 

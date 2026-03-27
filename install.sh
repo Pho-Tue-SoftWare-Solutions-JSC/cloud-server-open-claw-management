@@ -9,7 +9,7 @@ set -euo pipefail
 #   bash install.sh --mgmt-key <KEY> --domain <DOMAIN>
 #
 # --mgmt-key  MGMT API key tu HostBill (neu khong truyen se tu sinh)
-# --domain    Ten mien da tro DNS ve VPS (neu co se cau hinh SSL Let's Encrypt)
+# --domain    Ten mien da tro DNS ve VPS (neu co se cau hinh SSL ACME: Let's Encrypt, fallback ZeroSSL)
 # =============================================================================
 
 APP_VERSION="latest"
@@ -126,7 +126,7 @@ if [ -n "${EFFECTIVE_DOMAIN}" ]; then
 
         if [ "${RESOLVED}" = "${DROPLET_IP}" ]; then
             DNS_READY=true
-      log "DNS OK: ${EFFECTIVE_DOMAIN} -> ${DROPLET_IP}. Se dung Let's Encrypt SSL."
+      log "DNS OK: ${EFFECTIVE_DOMAIN} -> ${DROPLET_IP}. Se dung SSL ACME (Let's Encrypt, fallback ZeroSSL)."
             break
         fi
 
@@ -277,7 +277,7 @@ OPENCLAW_VERSION=${APP_VERSION}
 OPENCLAW_GATEWAY_PORT=18789
 OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
 
-# Domain & TLS (Caddy)
+# Domain & TLS (Caddy - ACME: Let's Encrypt, fallback ZeroSSL)
 DOMAIN=${CADDY_DOMAIN}
 CADDY_TLS=${CADDY_TLS_VALUE}
 

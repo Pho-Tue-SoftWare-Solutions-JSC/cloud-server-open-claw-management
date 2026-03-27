@@ -8,7 +8,7 @@ Internet
   ▼
 ┌─────────────────────────────────┐
 │  Caddy (systemd)                │  Port 80/443
-│  - Reverse proxy                │  Let's Encrypt auto SSL
+│  - Reverse proxy                │  ACME auto SSL (LE -> ZeroSSL)
 │  - /login, /api/auth/* → :9998  │
 │  - /* → :18789                  │
 └──────────┬──────────────────────┘
@@ -162,7 +162,7 @@ curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/j
   -d '{"domain":"new.example.com"}' \
   http://localhost:9998/api/domain
 ```
-Caddy will auto-provision Let's Encrypt SSL. If DNS not set correctly, will use self-signed cert.
+Caddy will auto-provision ACME SSL (Let's Encrypt, fallback ZeroSSL). If DNS not set correctly, it will use a self-signed cert.
 
 ### Change Model / Provider
 
@@ -366,7 +366,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system
 - **MGMT API key**: 64-hex characters — for Management API
 - **UFW**: Only open ports 80, 443, 9998, and SSH
 - **fail2ban**: SSH brute-force protection
-- **Caddy**: Automatic SSL (Let's Encrypt or self-signed)
+- **Caddy**: Automatic SSL (ACME: Let's Encrypt, fallback ZeroSSL, or self-signed)
 - **Device pairing**: Each connecting device must be approved
 
 ## Conventions

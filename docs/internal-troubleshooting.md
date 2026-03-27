@@ -122,7 +122,7 @@ systemctl restart openclaw-mgmt
 Domain-change flow:
 
 ```
-1. Write new Caddyfile (domain + Let's Encrypt)
+1. Write new Caddyfile (domain + ACME issuer chain: Let's Encrypt -> ZeroSSL)
 2. Restart Caddy (30s timeout)
 3. Sleep 3s
 4. Check Caddy status

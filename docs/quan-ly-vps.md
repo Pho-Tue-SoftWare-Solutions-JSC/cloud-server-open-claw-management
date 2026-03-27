@@ -118,7 +118,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain
 ```
 
-### Change domain (auto-provision Let's Encrypt SSL)
+### Change domain (auto-provision ACME SSL: Let's Encrypt, fallback ZeroSSL)
 
 **Requirement:** Domain must already have an A record pointing to the VPS IP.
 
@@ -130,7 +130,7 @@ curl -X PUT \
   http://$VPS_IP:9998/api/domain
 ```
 
-Optionally add an email for Let's Encrypt:
+Optionally add an email for ACME notifications:
 
 ```bash
 curl -X PUT \
@@ -151,12 +151,16 @@ Edit `/opt/openclaw/Caddyfile`:
 
 **With domain:**
 ```
+{
+  cert_issuer acme {
+    dir https://acme-v02.api.letsencrypt.org/directory
+  }
+  cert_issuer acme {
+    dir https://acme.zerossl.com/v2/DV90
+  }
+}
+
 openclaw.example.com {
-    tls {
-        issuer acme {
-            dir https://acme-v02.api.letsencrypt.org/directory
-        }
-    }
     reverse_proxy 127.0.0.1:18789
 }
 ```

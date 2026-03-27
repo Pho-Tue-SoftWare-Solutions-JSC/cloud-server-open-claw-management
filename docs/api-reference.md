@@ -196,13 +196,13 @@ View current domain and SSL status.
   "ip": "180.93.138.155",
   "ssl": true,
   "selfSignedSSL": false,
-  "caddyfile": "openclaw.example.com {\n    tls {\n        issuer acme {...}\n    }\n    reverse_proxy 127.0.0.1:18789\n}"
+  "caddyfile": "{\n    cert_issuer acme {\n        dir https://acme-v02.api.letsencrypt.org/directory\n    }\n    cert_issuer acme {\n        dir https://acme.zerossl.com/v2/DV90\n    }\n}\n\nopenclaw.example.com {\n    reverse_proxy 127.0.0.1:18789\n}"
 }
 ```
 
 | Field           | Description                                     |
 |-----------------|-------------------------------------------------|
-| `ssl`           | `true` if Let's Encrypt SSL is enabled          |
+| `ssl`           | `true` if public ACME SSL is enabled            |
 | `selfSignedSSL` | `true` if using self-signed cert (IP only)      |
 
 **Example:**
@@ -215,7 +215,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain
 
 ### PUT /api/domain
 
-Change the domain and auto-configure Let's Encrypt SSL.
+Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
 
 **Request body:**
 
@@ -229,7 +229,7 @@ Change the domain and auto-configure Let's Encrypt SSL.
 | Field    | Required | Description                                  |
 |----------|----------|----------------------------------------------|
 | `domain` | Yes      | FQDN (all lowercase, DNS already pointed to VPS) |
-| `email`  | No       | Email for Let's Encrypt registration         |
+| `email`  | No       | Email for ACME registration/notifications    |
 
 **Successful response:**
 

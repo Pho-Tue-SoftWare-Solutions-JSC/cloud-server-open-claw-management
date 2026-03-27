@@ -164,7 +164,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 | `POST`  | `/api/upgrade`   | `npm update -g openclaw` + restart                 |
 | `POST`  | `/api/reset`     | Factory reset (`{"confirm":"RESET"}`)              |
 | `POST`  | `/api/self-update` | Update Management API from GitHub                |
-| `PUT`   | `/api/domain`    | Change domain (Caddy auto-provisions SSL)           |
+| `PUT`   | `/api/domain`    | Change domain (Caddy auto-provisions ACME SSL)      |
 
 ### AI Providers & Models
 
