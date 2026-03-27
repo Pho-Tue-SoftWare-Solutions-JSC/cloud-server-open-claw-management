@@ -34,6 +34,8 @@ done
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }
 
 log "=== Bat dau cai dat OpenClaw (Bare-metal) ==="
+
+echo "=========================================================================="
 echo " ██████╗██╗      █████╗ ██╗    ██╗     ██████╗ ██████╗  ██████╗ "
 echo "██╔════╝██║     ██╔══██╗██║    ██║    ██╔═══██╗██╔══██╗██╔════╝ "
 echo "██║     ██║     ███████║██║ █╗ ██║    ██║   ██║██████╔╝██║  ███╗"
@@ -43,6 +45,13 @@ echo " ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═�
 
 echo "        OPENCLAW - MANAGEMENT BY HITECHCLOUD"
 echo "             CLAW.ORG.VN - VIETNAM"
+echo "             \"Pho Tue SoftWare And Technology Solutions Joint Stock Company\""
+echo "             https://claw.org.vn"
+echo "             https://hitechcloud.vn"
+echo "             https://photuesoftware.com"
+echo "             https://my.hitechcloud.vn"
+echo "=========================================================================="
+
 # =============================================================================
 # 1. Tat unattended-upgrades + doi apt lock
 # =============================================================================
