@@ -264,6 +264,12 @@ Check whether a domain is ready for ACME issuance before calling `PUT /api/domai
   "currentSslIssuer": "letsencrypt",
   "currentSslIssuerHint": "Using Let's Encrypt as the primary ACME issuer.",
   "warnings": [],
+  "acmeDiagnostics": {
+    "status": "ok",
+    "summary": "No known ACME failure signature was detected in recent Caddy logs.",
+    "findings": [],
+    "suggestedActions": []
+  },
   "recentCaddyAcmeLogs": [
     "... obtaining certificate ..."
   ]
@@ -277,6 +283,7 @@ Check whether a domain is ready for ACME issuance before calling `PUT /api/domai
 | `acmeEmailCleared` | `true` if the supplied email input would clear the stored ACME email |
 | `issuerOrder` | Ordered ACME issuers used by Caddy (`letsencrypt` then `zerossl`) |
 | `warnings` | Human-readable validation findings |
+| `acmeDiagnostics` | Parsed hints based on recent ACME-related Caddy logs |
 
 **Example:**
 
@@ -307,6 +314,19 @@ Get the live SSL issuer state plus recent ACME-related Caddy log lines.
     "notBefore": "notBefore=Mar 26 00:00:00 2026 GMT",
     "notAfter": "notAfter=Jun 24 23:59:59 2026 GMT",
     "provider": "zerossl"
+  },
+  "acmeDiagnostics": {
+    "status": "attention",
+    "summary": "ZeroSSL appears in recent ACME activity and may be serving as fallback.",
+    "findings": [
+      {
+        "code": "zerossl_fallback_active",
+        "message": "ZeroSSL appears in recent ACME activity and may be serving as fallback."
+      }
+    ],
+    "suggestedActions": [
+      "No action required if issuance succeeded; this indicates Let's Encrypt likely fell back to ZeroSSL."
+    ]
   },
   "recentCaddyAcmeLogs": [
     "... obtaining certificate ...",
@@ -359,6 +379,12 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
     "notBefore": "notBefore=Mar 26 00:00:00 2026 GMT",
     "notAfter": "notAfter=Jun 24 23:59:59 2026 GMT",
     "provider": "letsencrypt"
+  },
+  "acmeDiagnostics": {
+    "status": "ok",
+    "summary": "No known ACME failure signature was detected in recent Caddy logs.",
+    "findings": [],
+    "suggestedActions": []
   },
   "recentCaddyAcmeLogs": [
     "... obtaining certificate ..."

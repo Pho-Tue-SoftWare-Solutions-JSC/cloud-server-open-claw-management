@@ -132,7 +132,9 @@ Use this to quickly confirm whether Caddy is currently serving a Let's Encrypt c
 curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/preflight?domain=openclaw.example.com&email=admin@example.com"
 ```
 
-This returns DNS readiness, optional email validation, current issuer info, and recent ACME-related Caddy log lines.
+This returns DNS readiness, optional email validation, current issuer info, recent ACME-related Caddy log lines, and parsed diagnostic hints.
+
+If ACME is failing, check `acmeDiagnostics.findings` and `acmeDiagnostics.suggestedActions` first.
 
 ### Change domain (auto-provision ACME SSL: Let's Encrypt, fallback ZeroSSL)
 

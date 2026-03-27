@@ -393,6 +393,68 @@ function getRecentCaddyAcmeLogLines(lines = 60) {
   }
 }
 
+function buildAcmeDiagnostics(logLines = []) {
+  const findings = [];
+  const suggestedActions = [];
+  const seenCodes = new Set();
+
+  const addFinding = (code, message, action) => {
+    if (seenCodes.has(code)) return;
+    seenCodes.add(code);
+    findings.push({ code, message });
+    if (action && !suggestedActions.includes(action)) suggestedActions.push(action);
+  };
+
+  for (const line of logLines) {
+    const lower = String(line || '').toLowerCase();
+    if (!lower) continue;
+
+    if (lower.includes('rate limit') || lower.includes('too many certificates') || lower.includes('too many requests')) {
+      addFinding('rate_limited', 'ACME issuer is rate limiting certificate issuance attempts.', 'Wait for the CA rate-limit window to reset, then retry issuance.');
+    }
+    if (lower.includes('no such host') || lower.includes('nxdomain') || lower.includes('servfail') || lower.includes('dns problem')) {
+      addFinding('dns_resolution_failed', 'ACME could not resolve the domain DNS records.', 'Check public DNS propagation and verify the A record points to this VPS.');
+    }
+    if (lower.includes('i/o timeout') || lower.includes('context deadline exceeded') || lower.includes('timeout')) {
+      addFinding('network_timeout', 'ACME validation hit a network timeout.', 'Confirm ports 80 and 443 are reachable and that outbound network access is allowed.');
+    }
+    if (lower.includes('connection refused') || lower.includes('connect: cannot assign requested address')) {
+      addFinding('connection_refused', 'ACME validation could not connect back to the server.', 'Open ports 80 and 443 in the firewall and confirm Caddy is listening publicly.');
+    }
+    if (lower.includes('tls-alpn-01')) {
+      addFinding('tls_alpn_challenge', 'TLS-ALPN ACME challenge failed or was attempted.', 'Ensure port 443 is not intercepted by another proxy and allows direct TLS validation.');
+    }
+    if (lower.includes('http-01')) {
+      addFinding('http_challenge', 'HTTP-01 ACME challenge failed or was attempted.', 'Ensure port 80 is reachable and not redirected by another reverse proxy before Caddy.');
+    }
+    if (lower.includes('unauthorized') || lower.includes('invalid response')) {
+      addFinding('challenge_unauthorized', 'ACME challenge response was rejected by the issuer.', 'Recheck DNS, disable conflicting reverse proxies, and retry after Caddy is serving the requested hostname.');
+    }
+    if (lower.includes('caa')) {
+      addFinding('caa_restricted', 'CAA records may be blocking the current ACME issuer.', 'Review DNS CAA records and allow Let\'s Encrypt and/or ZeroSSL as needed.');
+    }
+    if (lower.includes('zerossl') && (lower.includes('issuer=') || lower.includes('obtaining certificate'))) {
+      addFinding('zerossl_fallback_active', 'ZeroSSL appears in recent ACME activity and may be serving as fallback.', 'No action required if issuance succeeded; this indicates Let\'s Encrypt likely fell back to ZeroSSL.');
+    }
+  }
+
+  if (findings.length === 0) {
+    return {
+      status: 'ok',
+      summary: logLines.length ? 'No known ACME failure signature was detected in recent Caddy logs.' : 'No recent ACME log lines were found.',
+      findings: [],
+      suggestedActions: []
+    };
+  }
+
+  return {
+    status: 'attention',
+    summary: findings[0].message,
+    findings,
+    suggestedActions
+  };
+}
+
 function normalizeDomainLikeValue(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -2519,6 +2581,7 @@ const server = http.createServer(async (req, res) => {
   if ((m = route(req, 'GET', '/api/domain/preflight'))) {
     try {
       const preflight = buildAcmePreflight(m.query.domain, Object.prototype.hasOwnProperty.call(m.query, 'email') ? m.query.email : undefined);
+      const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
       if (!preflight.requestedDomain) {
         return json(res, 400, { ok: false, error: 'Missing domain' });
       }
@@ -2526,7 +2589,8 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         ...preflight,
-        recentCaddyAcmeLogs: getRecentCaddyAcmeLogLines()
+        recentCaddyAcmeLogs,
+        acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2541,6 +2605,7 @@ const server = http.createServer(async (req, res) => {
       const isIP = rawDomain && /^https?:\/\//.test(rawDomain);
       const domain = rawDomain && !isIP && rawDomain !== 'localhost' ? rawDomain : null;
       const sslState = buildSslIssuerState(domain, caddyTls);
+      const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
 
       return json(res, 200, {
         ok: true,
@@ -2550,7 +2615,8 @@ const server = http.createServer(async (req, res) => {
         sslIssuerDetails: sslState.sslIssuerDetails,
         sslIssuerHint: sslState.sslIssuerHint,
         sslFallbackUsed: sslState.sslFallbackUsed,
-        recentCaddyAcmeLogs: getRecentCaddyAcmeLogLines()
+        recentCaddyAcmeLogs,
+        acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2600,6 +2666,7 @@ const server = http.createServer(async (req, res) => {
         if (caddyStatus === 'running') {
           const issuerInfo = waitForCertificateIssuerInfo(domain, 5, 3000);
           const sslState = buildSslIssuerState(domain, '', issuerInfo);
+          const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
           if (issuerInfo) {
             console.log(`[Caddy] Certificate issuer for ${domain}: ${issuerInfo.provider} (${issuerInfo.issuer || 'unknown issuer'})`);
             if (sslState.sslFallbackUsed) {
@@ -2617,7 +2684,8 @@ const server = http.createServer(async (req, res) => {
             sslIssuerDetails: sslState.sslIssuerDetails,
             sslIssuerHint: sslState.sslIssuerHint,
             sslFallbackUsed: sslState.sslFallbackUsed,
-            recentCaddyAcmeLogs: getRecentCaddyAcmeLogLines()
+            recentCaddyAcmeLogs,
+            acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
           });
         }
       } catch {}
