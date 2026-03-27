@@ -126,6 +126,14 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain/issuer
 
 Use this to quickly confirm whether Caddy is currently serving a Let's Encrypt certificate or has switched to ZeroSSL fallback.
 
+### Preflight check domain before applying
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/preflight?domain=openclaw.example.com&email=admin@example.com"
+```
+
+This returns DNS readiness, optional email validation, current issuer info, and recent ACME-related Caddy log lines.
+
 ### Change domain (auto-provision ACME SSL: Let's Encrypt, fallback ZeroSSL)
 
 **Requirement:** Domain must already have an A record pointing to the VPS IP.
@@ -151,6 +159,7 @@ curl -X PUT \
 > **Note:**
 > - Domain must be lowercase, no `https://`
 > - DNS must already resolve to your VPS IP, or the API will return an error
+> - To clear the stored ACME email, send `"email": ""` or `"email": null`
 > - If Caddy fails to start with the new domain, system will auto-rollback to the previous IP config
 
 ### Manual configuration on VPS

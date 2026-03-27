@@ -471,6 +471,72 @@
           ]
         },
         {
+          "name": "Get Domain Preflight",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/domain/preflight?domain=openclaw.example.com&email=admin@example.com",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "domain",
+                "preflight"
+              ],
+              "query": [
+                {
+                  "key": "domain",
+                  "value": "openclaw.example.com"
+                },
+                {
+                  "key": "email",
+                  "value": "admin@example.com"
+                }
+              ]
+            },
+            "description": "Check whether DNS, optional ACME email, and current issuer state are ready before applying a domain change."
+          },
+          "response": [
+            {
+              "name": "Ready",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/domain/preflight?domain=openclaw.example.com&email=admin@example.com",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "domain",
+                    "preflight"
+                  ],
+                  "query": [
+                    {
+                      "key": "domain",
+                      "value": "openclaw.example.com"
+                    },
+                    {
+                      "key": "email",
+                      "value": "admin@example.com"
+                    }
+                  ]
+                },
+                "description": "Check whether DNS, optional ACME email, and current issuer state are ready before applying a domain change."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"ok\": true,\n  \"requestedDomain\": \"openclaw.example.com\",\n  \"domain\": \"openclaw.example.com\",\n  \"domainValid\": true,\n  \"serverIP\": \"1.2.3.4\",\n  \"resolvedIPs\": [\n    \"1.2.3.4\"\n  ],\n  \"dnsResolved\": true,\n  \"dnsMatchesServer\": true,\n  \"email\": \"admin@example.com\",\n  \"emailProvided\": true,\n  \"emailValid\": true,\n  \"acmeEmailCleared\": false,\n  \"ready\": true,\n  \"issuerOrder\": [\n    \"letsencrypt\",\n    \"zerossl\"\n  ],\n  \"currentDomainMatch\": true,\n  \"currentSslIssuer\": \"letsencrypt\",\n  \"currentSslIssuerHint\": \"Using Let's Encrypt as the primary ACME issuer.\",\n  \"warnings\": [],\n  \"recentCaddyAcmeLogs\": [\n    \"... obtaining certificate ...\"\n  ]\n}"
+            }
+          ]
+        },
+        {
           "name": "Get Domain Issuer",
           "request": {
             "method": "GET",
@@ -540,7 +606,7 @@
                 "domain"
               ]
             },
-            "description": "Update domain and configure SSL via ACME (Let's Encrypt, fallback ZeroSSL). DNS must point to server IP. Validates DNS before applying. Rolls back on failure.\n\nParameters:\n- domain (required): Domain name\n- email (optional): Email for ACME notifications"
+            "description": "Update domain and configure SSL via ACME (Let's Encrypt, fallback ZeroSSL). DNS must point to server IP. Validates DNS before applying. Rolls back on failure.\n\nParameters:\n- domain (required): Domain name\n- email (optional): Email for ACME notifications; send empty/null to clear it"
           },
           "response": [
             {
@@ -567,14 +633,14 @@
                     "domain"
                   ]
                 },
-                "description": "Update domain and configure SSL via ACME (Let's Encrypt, fallback ZeroSSL). DNS must point to server IP. Validates DNS before applying. Rolls back on failure.\n\nParameters:\n- domain (required): Domain name\n- email (optional): Email for ACME notifications"
+                "description": "Update domain and configure SSL via ACME (Let's Encrypt, fallback ZeroSSL). DNS must point to server IP. Validates DNS before applying. Rolls back on failure.\n\nParameters:\n- domain (required): Domain name\n- email (optional): Email for ACME notifications; send empty/null to clear it"
               },
               "status": "OK",
               "code": 200,
               "_postman_previewlanguage": "Text",
               "header": [],
               "cookie": [],
-              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"acmeEmail\": \"admin@example.com\",\n  \"sslIssuer\": \"letsencrypt\",\n  \"sslIssuerHint\": \"Using Let's Encrypt as the primary ACME issuer.\",\n  \"sslFallbackUsed\": false,\n  \"recentCaddyAcmeLogs\": [\n    \"... obtaining certificate ...\"\n  ]\n}"
+              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"acmeEmail\": \"admin@example.com\",\n  \"acmeEmailCleared\": false,\n  \"sslIssuer\": \"letsencrypt\",\n  \"sslIssuerHint\": \"Using Let's Encrypt as the primary ACME issuer.\",\n  \"sslFallbackUsed\": false,\n  \"recentCaddyAcmeLogs\": [\n    \"... obtaining certificate ...\"\n  ]\n}"
             },
             {
               "name": "DNS Error",
@@ -600,7 +666,7 @@
                     "domain"
                   ]
                 },
-                "description": "Update domain and configure SSL via ACME (Let's Encrypt, fallback ZeroSSL). DNS must point to server IP. Validates DNS before applying. Rolls back on failure.\n\nParameters:\n- domain (required): Domain name\n- email (optional): Email for ACME notifications"
+                "description": "Update domain and configure SSL via ACME (Let's Encrypt, fallback ZeroSSL). DNS must point to server IP. Validates DNS before applying. Rolls back on failure.\n\nParameters:\n- domain (required): Domain name\n- email (optional): Email for ACME notifications; send empty/null to clear it"
               },
               "status": "Bad Request",
               "code": 400,

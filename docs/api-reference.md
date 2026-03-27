@@ -231,6 +231,61 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain
 
 ---
 
+### GET /api/domain/preflight
+
+Check whether a domain is ready for ACME issuance before calling `PUT /api/domain`.
+
+**Query parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `domain`  | Yes      | Lowercase FQDN to validate |
+| `email`   | No       | Optional ACME email to validate; pass empty to preview clearing it |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "requestedDomain": "openclaw.example.com",
+  "domain": "openclaw.example.com",
+  "domainValid": true,
+  "serverIP": "180.93.138.155",
+  "resolvedIPs": ["180.93.138.155"],
+  "dnsResolved": true,
+  "dnsMatchesServer": true,
+  "email": "admin@example.com",
+  "emailProvided": true,
+  "emailValid": true,
+  "acmeEmailCleared": false,
+  "ready": true,
+  "issuerOrder": ["letsencrypt", "zerossl"],
+  "currentDomainMatch": true,
+  "currentSslIssuer": "letsencrypt",
+  "currentSslIssuerHint": "Using Let's Encrypt as the primary ACME issuer.",
+  "warnings": [],
+  "recentCaddyAcmeLogs": [
+    "... obtaining certificate ..."
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `ready` | `true` when domain format, DNS, and optional email all pass validation |
+| `resolvedIPs` | Current A records returned from DNS-over-HTTPS |
+| `acmeEmailCleared` | `true` if the supplied email input would clear the stored ACME email |
+| `issuerOrder` | Ordered ACME issuers used by Caddy (`letsencrypt` then `zerossl`) |
+| `warnings` | Human-readable validation findings |
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/preflight?domain=openclaw.example.com&email=admin@example.com"
+```
+
+---
+
 ### GET /api/domain/issuer
 
 Get the live SSL issuer state plus recent ACME-related Caddy log lines.
@@ -284,7 +339,7 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
 | Field    | Required | Description                                  |
 |----------|----------|----------------------------------------------|
 | `domain` | Yes      | FQDN (all lowercase, DNS already pointed to VPS) |
-| `email`  | No       | Email for ACME registration/notifications    |
+| `email`  | No       | Email for ACME registration/notifications; send `""` or `null` to clear it |
 
 **Successful response:**
 
@@ -293,6 +348,7 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
   "ok": true,
   "domain": "openclaw.example.com",
   "acmeEmail": "admin@example.com",
+  "acmeEmailCleared": false,
   "sslIssuer": "letsencrypt",
   "sslIssuerHint": "Using Let's Encrypt as the primary ACME issuer.",
   "sslFallbackUsed": false,
@@ -327,6 +383,15 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
 curl -X PUT -H "Authorization: Bearer $MGMT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"domain": "openclaw.example.com", "email": "admin@example.com"}' \
+  http://$VPS_IP:9998/api/domain
+```
+
+**Clear the stored ACME email:**
+
+```bash
+curl -X PUT -H "Authorization: Bearer $MGMT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "openclaw.example.com", "email": ""}' \
   http://$VPS_IP:9998/api/domain
 ```
 

@@ -225,6 +225,13 @@ function getAcmeEmail() {
   return value || null;
 }
 
+function normalizeOptionalEmailInput(email) {
+  if (email === undefined) return { provided: false, value: '', clearRequested: false };
+  if (email === null) return { provided: true, value: '', clearRequested: true };
+  const value = String(email).trim();
+  return { provided: true, value, clearRequested: !value };
+}
+
 function setAcmeEmail(email) {
   const value = String(email || '').trim();
   if (!value) {
@@ -305,6 +312,71 @@ function buildSslIssuerState(rawDomain, caddyTls = '', providedIssuerInfo) {
     sslIssuerDetails: sslIssuerInfo,
     sslFallbackUsed,
     sslIssuerHint
+  };
+}
+
+function resolveDomainARecords(domain) {
+  const normalizedDomain = normalizeDomainLikeValue(domain);
+  if (!normalizedDomain) return [];
+  try {
+    const out = shell(`curl -sf "https://1.1.1.1/dns-query?name=${normalizedDomain}&type=A" -H "accept: application/dns-json" 2>/dev/null`, 10000);
+    const matches = (out || '').match(/"data":\s*"(\d+\.\d+\.\d+\.\d+)"/g) || [];
+    return [...new Set(matches.map(m => m.match(/(\d+\.\d+\.\d+\.\d+)/)[1]))];
+  } catch {
+    return [];
+  }
+}
+
+function buildAcmePreflight(rawDomain, rawEmail) {
+  const requestedDomain = String(rawDomain || '').trim().toLowerCase();
+  const domain = normalizeDomainLikeValue(requestedDomain);
+  const emailInput = normalizeOptionalEmailInput(rawEmail);
+  const serverIP = getServerIP();
+  const resolvedIPs = domain ? resolveDomainARecords(domain) : [];
+  const dnsResolved = resolvedIPs.length > 0;
+  const dnsMatchesServer = dnsResolved && resolvedIPs.includes(serverIP);
+  const emailValid = !emailInput.provided || emailInput.clearRequested || isValidEmail(emailInput.value);
+  const currentDomain = normalizeDomainLikeValue(getConfiguredDomainRaw() || '');
+  const caddyTls = getEnvValue('CADDY_TLS') || '';
+  const currentIssuerState = currentDomain && domain && currentDomain === domain
+    ? buildSslIssuerState(domain, caddyTls)
+    : null;
+  const warnings = [];
+
+  if (!requestedDomain) {
+    warnings.push('Domain is required for ACME preflight.');
+  } else if (!domain) {
+    warnings.push('Domain must be a lowercase public FQDN without protocol or IP address.');
+  } else if (!dnsResolved) {
+    warnings.push(`Cannot resolve an A record for ${domain}.`);
+  } else if (!dnsMatchesServer) {
+    warnings.push(`DNS for ${domain} must point to ${serverIP}.`);
+  }
+
+  if (!emailValid) {
+    warnings.push('ACME email is invalid.');
+  } else if (emailInput.provided && emailInput.clearRequested) {
+    warnings.push('ACME email will be cleared for the next domain update.');
+  }
+
+  return {
+    requestedDomain: requestedDomain || null,
+    domain,
+    domainValid: !!domain,
+    serverIP,
+    resolvedIPs,
+    dnsResolved,
+    dnsMatchesServer,
+    email: emailInput.provided && !emailInput.clearRequested ? emailInput.value : null,
+    emailProvided: emailInput.provided,
+    emailValid,
+    acmeEmailCleared: emailInput.provided && emailInput.clearRequested,
+    ready: !!domain && dnsMatchesServer && emailValid,
+    issuerOrder: ['letsencrypt', 'zerossl'],
+    currentDomainMatch: !!(currentDomain && domain && currentDomain === domain),
+    currentSslIssuer: currentIssuerState ? currentIssuerState.sslIssuer : null,
+    currentSslIssuerHint: currentIssuerState ? currentIssuerState.sslIssuerHint : null,
+    warnings
   };
 }
 
@@ -2442,6 +2514,24 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // GET /api/domain/preflight — Kiem tra san sang ACME truoc khi doi domain
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/domain/preflight'))) {
+    try {
+      const preflight = buildAcmePreflight(m.query.domain, Object.prototype.hasOwnProperty.call(m.query, 'email') ? m.query.email : undefined);
+      if (!preflight.requestedDomain) {
+        return json(res, 400, { ok: false, error: 'Missing domain' });
+      }
+
+      return json(res, 200, {
+        ok: true,
+        ...preflight,
+        recentCaddyAcmeLogs: getRecentCaddyAcmeLogLines()
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // GET /api/domain/issuer — Xem issuer SSL hien tai + log lien quan
   // =========================================================================
   if (route(req, 'GET', '/api/domain/issuer')) {
@@ -2472,36 +2562,28 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const domain = (body.domain || '').trim().toLowerCase();
-      const email = (body.email || '').trim();
-      const hasEmailField = Object.prototype.hasOwnProperty.call(body, 'email');
+      const emailInput = normalizeOptionalEmailInput(body.email);
+      const hasEmailField = emailInput.provided;
       const previousAcmeEmail = getAcmeEmail();
+      const preflight = buildAcmePreflight(domain, hasEmailField ? body.email : undefined);
 
       if (!domain) return json(res, 400, { ok: false, error: 'Missing domain' });
-      if (email && !isValidEmail(email)) return json(res, 400, { ok: false, error: 'Invalid email format' });
-      if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) {
+      if (!preflight.emailValid) return json(res, 400, { ok: false, error: 'Invalid email format' });
+      if (!preflight.domainValid) {
         return json(res, 400, { ok: false, error: 'Invalid domain format' });
       }
 
-      // DNS check (Cloudflare DoH)
-      const serverIP = getServerIP();
-      let resolvedIPs = [];
-      try {
-        const out = shell(`curl -sf "https://1.1.1.1/dns-query?name=${domain}&type=A" -H "accept: application/dns-json" 2>/dev/null`, 10000);
-        const matches = (out || '').match(/"data":\s*"(\d+\.\d+\.\d+\.\d+)"/g) || [];
-        resolvedIPs = matches.map(m => m.match(/(\d+\.\d+\.\d+\.\d+)/)[1]);
-      } catch {}
-
-      if (resolvedIPs.length === 0) {
-        return json(res, 400, { ok: false, error: `Cannot resolve DNS for ${domain}. Point A record to ${serverIP}.` });
+      if (!preflight.dnsResolved) {
+        return json(res, 400, { ok: false, error: `Cannot resolve DNS for ${domain}. Point A record to ${preflight.serverIP}.` });
       }
-      if (!resolvedIPs.includes(serverIP)) {
-        return json(res, 400, { ok: false, error: `DNS for ${domain} resolves to ${resolvedIPs.join(', ')} — does not match server IP (${serverIP}).` });
+      if (!preflight.dnsMatchesServer) {
+        return json(res, 400, { ok: false, error: `DNS for ${domain} resolves to ${preflight.resolvedIPs.join(', ')} — does not match server IP (${preflight.serverIP}).` });
       }
 
       // Update .env with new domain (Caddy auto ACME for real domains; Let's Encrypt with ZeroSSL fallback)
       setEnvValue('DOMAIN', domain);
       setEnvValue('CADDY_TLS', '');
-      if (hasEmailField) setAcmeEmail(email);
+      if (hasEmailField) setAcmeEmail(emailInput.clearRequested ? '' : emailInput.value);
 
       // Download latest Caddyfile template from repo
       try {
@@ -2530,6 +2612,7 @@ const server = http.createServer(async (req, res) => {
             ok: true,
             domain,
             acmeEmail: getAcmeEmail(),
+            acmeEmailCleared: hasEmailField ? emailInput.clearRequested : false,
             sslIssuer: sslState.sslIssuer,
             sslIssuerDetails: sslState.sslIssuerDetails,
             sslIssuerHint: sslState.sslIssuerHint,
@@ -2540,7 +2623,7 @@ const server = http.createServer(async (req, res) => {
       } catch {}
 
       // Rollback: revert domain to IP in .env
-      setEnvValue('DOMAIN', `http://${serverIP}`);
+      setEnvValue('DOMAIN', `http://${preflight.serverIP}`);
       setEnvValue('CADDY_TLS', '');
       if (hasEmailField) setAcmeEmail(previousAcmeEmail || '');
       try { systemctl('restart', CADDY_SERVICE, 15000); } catch {}
