@@ -61,7 +61,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "status"]
             },
-            "description": "Get systemd service status for OpenClaw and Caddy, including version and gateway port."
+            "description": "Get managed OpenClaw and Caddy unit status, including version and gateway port. The OpenClaw unit name follows `OPENCLAW_SYSTEMD_UNIT` when configured, and may be managed through either system or user systemd depending deployment."
           },
           "response": [
             {
@@ -92,6 +92,209 @@
               "body": "{\n  \"ok\": true,\n  \"hostname\": \"openclaw-vps\",\n  \"ip\": \"1.2.3.4\",\n  \"os\": \"Ubuntu 24.04 LTS\",\n  \"uptime\": 86400,\n  \"loadAvg\": [0.5, 0.3, 0.2],\n  \"memory\": {\n    \"total\": \"2048MB\",\n    \"free\": \"1024MB\",\n    \"used\": \"1024MB\"\n  },\n  \"disk\": {\n    \"total\": \"50G\",\n    \"used\": \"10G\",\n    \"available\": \"38G\",\n    \"usagePercent\": \"21%\"\n  },\n  \"nodeVersion\": \"v22.0.0\",\n  \"openclawVersion\": \"OpenClaw CLI 0.92.1\"\n}"
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Public UI & Stream",
+      "item": [
+        {
+          "name": "Open Pair Redirect",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/pair?token={{MGMT_API_KEY}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["pair"],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{MGMT_API_KEY}}"
+                }
+              ]
+            },
+            "description": "Public bootstrap redirect used during device pairing. It enables short-lived auto-polling and redirects to the gateway dashboard with the provided token in the URL fragment."
+          },
+          "response": []
+        },
+        {
+          "name": "Open Login Page",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["login"]
+            },
+            "description": "Fetch the public HTML login page served by the management API. This is not a JSON API endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "Open Terminal Page",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/terminal",
+              "host": ["{{BASE_URL}}"],
+              "path": ["terminal"]
+            },
+            "description": "Fetch the public HTML terminal UI page. Terminal command auth is handled client-side with the management API token."
+          },
+          "response": []
+        },
+        {
+          "name": "Stream Terminal SSE",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": {
+              "raw": "{{BASE_URL}}/api/terminal/stream?cmd=systemctl%20status%20openclaw&token={{MGMT_API_KEY}}",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "terminal", "stream"],
+              "query": [
+                {
+                  "key": "cmd",
+                  "value": "systemctl status openclaw"
+                },
+                {
+                  "key": "token",
+                  "value": "{{MGMT_API_KEY}}"
+                }
+              ]
+            },
+            "description": "Open the terminal SSE stream for one whitelisted command. This endpoint returns `text/event-stream`, not JSON, and authenticates via the `token` query parameter."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"change-me\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/login",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Validate configured login credentials and return the OpenClaw gateway token. This is the only auth route that does not require the management Bearer token."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"token\": \"gateway-token-value\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Login User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"change-me-now\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/create-user",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "create-user"]
+            },
+            "description": "Create the single management login account stored in `.env`. This route requires the management API Bearer token."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Login User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/user",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "user"]
+            },
+            "description": "Check whether a login user is configured and return the current username when present."
+          },
+          "response": []
+        },
+        {
+          "name": "Change Login Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"new-secret-password\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/change-password",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "change-password"]
+            },
+            "description": "Replace the stored password hash for the configured login user. A login user must already exist."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Login User",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/auth/user",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "auth", "user"]
+            },
+            "description": "Remove the stored management login credentials from `.env`."
+          },
+          "response": []
         }
       ]
     },
@@ -191,7 +394,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "upgrade"]
             },
-            "description": "Update the global OpenClaw package with npm and restart the OpenClaw systemd service. Runs asynchronously (returns 202). Check /api/status for progress."
+            "description": "Update the global OpenClaw package with npm and restart the managed OpenClaw unit. Runs asynchronously (returns 202). Check /api/status for progress."
           },
           "response": [
             {
@@ -217,7 +420,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "restart"]
             },
-            "description": "Restart the OpenClaw systemd service."
+            "description": "Restart the managed OpenClaw unit."
           },
           "response": [
             {
@@ -238,7 +441,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "stop"]
             },
-            "description": "Stop the OpenClaw systemd service."
+            "description": "Stop the managed OpenClaw unit."
           },
           "response": [
             {
@@ -259,7 +462,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "start"]
             },
-            "description": "Start the OpenClaw systemd service."
+            "description": "Start the managed OpenClaw unit."
           },
           "response": [
             {
@@ -410,7 +613,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "provider"]
             },
-            "description": "Change AI provider and model. Loads provider template config, injects gateway token, applies model override, and restarts the OpenClaw service.\n\nProviders: anthropic, openai, gemini\n\nModel parameter is optional — if omitted, uses provider's default model."
+            "description": "Change AI provider and model. Loads the selected built-in provider template or custom provider template, injects the gateway token, applies an optional model override, and restarts the managed OpenClaw unit. Built-in provider switches keep custom providers from the template directory merged into active config so upstream `models.mode=merge` behavior is preserved.\n\nProvider may be any built-in provider key returned by `GET /api/providers` or any custom provider template name.\n\nModel parameter is optional — if omitted, uses the provider template's default model."
           },
           "response": [
             {
@@ -440,7 +643,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "api-key"]
             },
-            "description": "Update API key for a provider. Sets the key in `.env`/auth profiles and restarts the OpenClaw service.\n\nProviders: anthropic (ANTHROPIC_API_KEY), openai (OPENAI_API_KEY), gemini (GEMINI_API_KEY)"
+            "description": "Update the API key for built-in providers that support API-key auth (for example anthropic/openai/google/deepseek/groq). OAuth-only providers such as `openai-codex` are rejected and must use `/api/config/chatgpt-oauth/*` endpoints. The management API normalizes pasted secrets by stripping embedded line breaks before saving to auth profiles, and also mirrors the secret into `.env` when targeting the main agent, then restarts OpenClaw."
           },
           "response": [
             {
@@ -450,6 +653,29 @@
               "body": "{\n  \"ok\": true,\n  \"provider\": \"anthropic\",\n  \"apiKey\": \"sk-ant-a...xxxxx\"\n}"
             }
           ]
+        },
+        {
+          "name": "Delete API Key",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"anthropic\",\n  \"agentId\": \"main\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/api-key",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "api-key"]
+            },
+            "description": "Remove one API key for a provider that supports API-key auth. OAuth-only providers such as `openai-codex` are rejected and must be managed with `/api/config/chatgpt-oauth/*` endpoints."
+          },
+          "response": []
         },
         {
           "name": "Test API Key",
@@ -470,7 +696,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "config", "test-key"]
             },
-            "description": "Test an API key before applying. Makes a real API call to the provider to verify the key is valid.\n\nProviders: anthropic, openai, gemini"
+            "description": "Test an API key before applying for built-in providers that support API-key auth. OAuth-only providers such as `openai-codex` are rejected and do not support API-key validation."
           },
           "response": [
             {
@@ -486,6 +712,136 @@
               "body": "{\n  \"ok\": false,\n  \"error\": \"API key invalid or expired\"\n}"
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Config Providers",
+      "item": [
+        {
+          "name": "List Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/providers",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "providers"]
+            },
+            "description": "List all built-in and custom providers, their available models, active status, default model, and masked credential presence."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Custom Provider",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseUrl\": \"https://api.example.com/v1\",\n  \"model\": \"acme/acme-chat-1\",\n  \"modelName\": \"Acme Chat 1\",\n  \"apiKey\": \"acme-key-example\",\n  \"api\": \"openai-completions\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/custom-provider",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "custom-provider"]
+            },
+            "description": "Create a custom provider template, normalize and persist its API key when provided, switch the active config to that provider, and restart OpenClaw. Loopback/local `baseUrl` values such as `http://127.0.0.1:11434/v1` or `http://localhost:11434/v1` may omit `apiKey` so OpenClaw can use its local-auth fallback semantics. Azure endpoints are normalized to the upstream config shape; Azure OpenAI endpoints are stored on `/openai/v1` with `api=openai-responses` and Azure-style `api-key` header auth."
+          },
+          "response": []
+        },
+        {
+          "name": "List Custom Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/custom-providers",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "custom-providers"]
+            },
+            "description": "List custom provider templates discovered in the config template directory, plus the current active provider/model."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Custom Provider",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"baseUrl\": \"https://api.example.com/v2\",\n  \"api\": \"openai-completions\",\n  \"model\": \"acme/acme-chat-2\",\n  \"modelName\": \"Acme Chat 2\",\n  \"apiKey\": \"acme-key-updated\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/custom-provider/acme",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "custom-provider", "acme"]
+            },
+            "description": "Update one custom provider template and optionally append a new model or rotate its stored API key. When `apiKey` is provided, the management API normalizes pasted secrets before saving them. For loopback/local custom providers, sending an empty `apiKey` clears the stored key so runtime local-auth fallback can apply. Azure endpoints are re-normalized on update so stored `baseUrl`, `api`, and Azure `api-key` header auth remain aligned with upstream onboarding behavior."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Custom Provider",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/custom-provider/acme",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "custom-provider", "acme"]
+            },
+            "description": "Delete one custom provider template and remove its stored secrets. If the deleted provider is currently selected, the management API reloads the Anthropic built-in template into active config and returns the fallback built-in model so runtime config never points at a removed provider."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Provider Model",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"claude-sonnet-4-20250514\",\n  \"name\": \"Claude Sonnet 4\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/providers/anthropic/models",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "providers", "anthropic", "models"]
+            },
+            "description": "Append one model entry to a built-in or custom provider template. If that provider is already active in `openclaw.json`, the management API also updates the active config and restarts OpenClaw so the new model becomes available immediately."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Provider Model",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/providers/anthropic/models/claude-sonnet-4-20250514",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "providers", "anthropic", "models", "claude-sonnet-4-20250514"]
+            },
+            "description": "Remove one model entry from a built-in or custom provider template by provider and model id. If that provider is active, the management API also updates the live config, restarts OpenClaw, and falls back the default selected model when the removed model was currently selected."
+          },
+          "response": []
         }
       ]
     },
@@ -648,7 +1004,7 @@
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"path\": \"/opt/openclaw/config/openclaw.json\",\n  \"size\": 2048,\n  \"updatedAt\": \"2026-03-24T08:00:00.000Z\",\n  \"content\": \"{...raw json...}\"\n}"
+              "body": "{\n  \"ok\": true,\n  \"path\": \"/home/openclaw/.openclaw/openclaw.json\",\n  \"size\": 2048,\n  \"updatedAt\": \"2026-03-24T08:00:00.000Z\",\n  \"content\": \"{...raw json...}\"\n}"
             }
           ]
         }
@@ -697,7 +1053,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "telegram"]
             },
-            "description": "Add or update a messaging channel token. Restarts the OpenClaw service after applying.\n\nChannels: telegram, discord, slack, zalo\n\nFor Slack, you can also pass appToken in the body."
+            "description": "Add or update a messaging channel token. Secrets are normalized before saving and the managed OpenClaw unit is restarted after applying.\n\nChannels: telegram, discord, slack, zalo\n\nFor Slack, you can also pass `appToken` in the body. For Zalo, the route now defaults `dmPolicy` to `pairing` instead of `open`."
           },
           "response": [
             {
@@ -718,7 +1074,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "telegram"]
             },
-            "description": "Remove a messaging channel. Deletes the token from `.env` and restarts the OpenClaw service.\n\nChannels: telegram, discord, slack, zalo"
+            "description": "Remove a messaging channel. Deletes the token from `.env` and restarts the managed OpenClaw unit.\n\nChannels: telegram, discord, slack, zalo"
           },
           "response": [
             {
@@ -756,14 +1112,14 @@
                 }
               ]
             },
-            "description": "Fetch upstream-style channel status from the OpenClaw gateway, including live connectivity and richer account state when supported by the channel plugin."
+            "description": "Fetch upstream-style channel status from the OpenClaw gateway via the local `openclaw gateway call channels.status` bridge, including live connectivity and richer account state when supported by the channel plugin."
           },
           "response": [
             {
               "name": "Success",
               "status": "OK",
               "code": 200,
-              "body": "{\n  \"ok\": true,\n  \"method\": \"channels.status\",\n  \"result\": {\n    \"ts\": 1711276800000,\n    \"channels\": [\n      {\n        \"channel\": \"telegram\",\n        \"accountId\": \"default\",\n        \"connected\": true,\n        \"configured\": true\n      }\n    ]\n  }\n}"
+              "body": "{\n  \"ok\": true,\n  \"method\": \"channels.status\",\n  \"result\": {\n    \"ts\": 1711276800000,\n    \"channelOrder\": [\"telegram\"],\n    \"channels\": {\n      \"telegram\": {\n        \"configured\": true\n      }\n    },\n    \"channelAccounts\": {\n      \"telegram\": [\n        {\n          \"accountId\": \"default\",\n          \"configured\": true,\n          \"connected\": true\n        }\n      ]\n    },\n    \"channelDefaultAccountId\": {\n      \"telegram\": \"default\"\n    }\n  }\n}"
             }
           ]
         },
@@ -779,14 +1135,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"channel\": \"telegram\",\n  \"account\": \"default\"\n}"
+              "raw": "{\n  \"channel\": \"telegram\",\n  \"accountId\": \"default\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/channels/logout",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "logout"]
             },
-            "description": "Log out a channel session through the upstream gateway method `channels.logout`."
+            "description": "Log out a channel session through `channels.logout` using `channel` and optional `accountId`."
           },
           "response": [
             {
@@ -809,14 +1165,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"account\": \"default\"\n}"
+              "raw": "{\n  \"accountId\": \"default\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/channels/telegram/logout",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "telegram", "logout"]
             },
-            "description": "Convenience logout route that injects the channel name from the URL path."
+            "description": "Convenience logout route that injects the channel name from the URL path and accepts optional `accountId`."
           },
           "response": []
         },
@@ -876,7 +1232,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "channels", "zalo", "config"]
             },
-            "description": "Merge a local Zalo config patch, validate DM/webhook/media fields, enable the plugin entry, optionally sync `accounts.default.botToken` to `ZALO_BOT_TOKEN`, and restart the gateway by default."
+            "description": "Merge a local Zalo config patch, normalize secret-like fields before saving, validate DM/webhook/media fields, enable the plugin entry, optionally sync `accounts.default.botToken` to `ZALO_BOT_TOKEN`, and restart the gateway by default."
           },
           "response": []
         },
@@ -1032,6 +1388,35 @@
               "status": "OK",
               "code": 200,
               "body": "{\n  \"ok\": true,\n  \"method\": \"tools.catalog\",\n  \"result\": {\n    \"groups\": [\n      {\n        \"name\": \"core\",\n        \"tools\": [\"read_file\", \"run_in_terminal\"]\n      }\n    ]\n  }\n}"
+            }
+          ]
+        }
+        ,
+        {
+          "name": "Get Effective Tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/tools/effective?sessionKey=main%3Ademo-session",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "tools", "effective"],
+              "query": [
+                {
+                  "key": "sessionKey",
+                  "value": "main%3Ademo-session",
+                  "description": "Required upstream session key used to resolve the effective tool inventory"
+                }
+              ]
+            },
+            "description": "Resolve the effective upstream tool inventory for one session via `tools.effective`. You can optionally add `agentId`, but it must match the session's resolved agent."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"method\": \"tools.effective\",\n  \"result\": {\n    \"agentId\": \"main\",\n    \"sessionKey\": \"main:demo-session\",\n    \"groups\": [\n      {\n        \"name\": \"core\",\n        \"tools\": [\"read_file\", \"run_in_terminal\"]\n      }\n    ]\n  }\n}"
             }
           ]
         }
@@ -1204,14 +1589,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"skillKey\": \"traffic-fine-lookup-vn\",\n  \"enabled\": true,\n  \"env\": {\n    \"TRAFFIC_LOOKUP_REGION\": \"vn\"\n  },\n  \"config\": {\n    \"officialPortal\": \"https://www.csgt.vn\"\n  },\n  \"restart\": false\n}"
+              "raw": "{\n  \"skillKey\": \"traffic-fine-lookup-vn\",\n  \"enabled\": true,\n  \"apiKey\": \"skill-secret-without-line-breaks\",\n  \"env\": {\n    \"TRAFFIC_LOOKUP_REGION\": \"vn\",\n    \"RETRY_COUNT\": 0\n  },\n  \"config\": {\n    \"officialPortal\": \"https://www.csgt.vn\"\n  },\n  \"restart\": false\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/skills/update",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "skills", "update"]
             },
-            "description": "Update `skills.entries.<skillKey>` in `openclaw.json` with enabled state, API key, env overrides, and custom config fields."
+            "description": "Update `skills.entries.<skillKey>` in `openclaw.json` with enabled state, API key, env overrides, and custom config fields. API keys are normalized like upstream `skills.update`, and env values are trimmed string values; send an empty string to remove one env key."
           },
           "response": [
             {
@@ -1413,14 +1798,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"agentId\": \"main\",\n  \"source\": \"clawhub\",\n  \"skillKey\": \"traffic-fine-lookup-vn\"\n}"
+              "raw": "{\n  \"source\": \"clawhub\",\n  \"slug\": \"traffic-fine-lookup-vn\",\n  \"force\": false\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/skills/install",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "skills", "install"]
             },
-            "description": "Install a skill through the upstream `skills.install` workflow."
+            "description": "Install a skill through `skills.install` using either `{name, installId}` or ClawHub form `{source:\"clawhub\", slug, version?, force?}`."
           },
           "response": []
         }
@@ -1476,14 +1861,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"agentId\": \"main\",\n  \"sessionId\": \"demo-session\",\n  \"title\": \"Demo Session\"\n}"
+              "raw": "{\n  \"key\": \"main:demo-session\",\n  \"agentId\": \"main\",\n  \"label\": \"Demo Session\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/sessions",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "sessions"]
             },
-            "description": "Create a new upstream-style session via `sessions.create`."
+            "description": "Create a new session via `sessions.create` with optional `key`, `agentId`, and `label`."
           },
           "response": []
         },
@@ -1545,14 +1930,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"title\": \"Renamed Demo Session\"\n}"
+              "raw": "{\n  \"label\": \"Renamed Demo Session\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/sessions/main%3Ademo-session",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "sessions", "main%3Ademo-session"]
             },
-            "description": "Update session metadata through `sessions.patch`."
+            "description": "Update session metadata through `sessions.patch` (for title changes use `label`)."
           },
           "response": []
         },
@@ -1591,14 +1976,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"reason\": \"manual-maintenance\"\n}"
+              "raw": "{\n  \"maxLines\": 200\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/sessions/main%3Ademo-session/compact",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "sessions", "main%3Ademo-session", "compact"]
             },
-            "description": "Compact a session with `sessions.compact` to reduce transcript size."
+            "description": "Compact a session with `sessions.compact`; optionally provide `maxLines` to control retained transcript lines."
           },
           "response": []
         },
@@ -1716,14 +2101,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"command\": \"system.run\",\n  \"params\": {\n    \"command\": [\"uname\", \"-a\"]\n  }\n}"
+              "raw": "{\n  \"command\": \"system.run\",\n  \"params\": {\n    \"command\": [\"uname\", \"-a\"]\n  },\n  \"idempotencyKey\": \"invoke-demo-001\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/node-123/invoke",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "node-123", "invoke"]
             },
-            "description": "Invoke an upstream node command via `node.invoke`."
+            "description": "Invoke an upstream node command via `node.invoke` (requires `idempotencyKey`; API auto-generates one if omitted)."
           },
           "response": []
         },
@@ -1739,14 +2124,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"requestId\": \"invoke-123\",\n  \"ok\": true,\n  \"result\": {\n    \"stdout\": \"Linux node-123\\n\"\n  }\n}"
+              "raw": "{\n  \"id\": \"invoke-123\",\n  \"ok\": true,\n  \"payload\": {\n    \"stdout\": \"Linux node-123\\n\"\n  }\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/node-123/invoke-result",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "node-123", "invoke-result"]
             },
-            "description": "Submit a node execution result callback via upstream `node.invoke.result`."
+            "description": "Submit a node execution result callback via upstream `node.invoke.result` using `id`, `ok`, and optional `payload`/`error`."
           },
           "response": []
         },
@@ -1762,14 +2147,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"type\": \"presence\",\n  \"status\": \"online\",\n  \"battery\": 92,\n  \"network\": \"wifi\"\n}"
+              "raw": "{\n  \"event\": \"presence\",\n  \"payload\": {\n    \"status\": \"online\",\n    \"battery\": 92,\n    \"network\": \"wifi\"\n  }\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/node-123/events",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "node-123", "events"]
             },
-            "description": "Send a node-originated event into the gateway via upstream `node.event`."
+            "description": "Send a node-originated event into the gateway via upstream `node.event` using `event` and optional `payload`."
           },
           "response": []
         },
@@ -1785,14 +2170,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"target\": \"control-ui\"\n}"
+              "raw": "{}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/node-123/canvas/capability/refresh",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "node-123", "canvas", "capability", "refresh"]
             },
-            "description": "Refresh a node canvas capability token/window via upstream `node.canvas.capability.refresh`."
+            "description": "Refresh a node canvas capability token/window via upstream `node.canvas.capability.refresh` (no params required)."
           },
           "response": []
         },
@@ -1822,14 +2207,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"deviceName\": \"My iPhone\"\n}"
+              "raw": "{\n  \"nodeId\": \"node-123\",\n  \"displayName\": \"My iPhone\",\n  \"platform\": \"ios\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/pairing/request",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "pairing", "request"]
             },
-            "description": "Create or refresh a node pairing request through `node.pair.request`."
+            "description": "Create or refresh a node pairing request through `node.pair.request` (requires `nodeId`; optional device metadata fields are supported)."
           },
           "response": []
         },
@@ -1891,14 +2276,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"requestId\": \"pairreq-123\",\n  \"code\": \"123456\"\n}"
+              "raw": "{\n  \"nodeId\": \"node-123\",\n  \"token\": \"pair-token-from-request\"\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/pairing/verify",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "pairing", "verify"]
             },
-            "description": "Verify a node pairing challenge through `node.pair.verify`."
+            "description": "Verify node pairing through `node.pair.verify` using `nodeId` and `token`."
           },
           "response": []
         },
@@ -1937,14 +2322,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nodeId\": \"node-123\",\n  \"payload\": {\n    \"hello\": \"world\"\n  }\n}"
+              "raw": "{\n  \"nodeId\": \"node-123\",\n  \"type\": \"status.request\",\n  \"priority\": \"normal\",\n  \"wake\": true\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/pending/enqueue",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "pending", "enqueue"]
             },
-            "description": "Enqueue an item for node delivery with `node.pending.enqueue`."
+            "description": "Enqueue pending work with `node.pending.enqueue` using `nodeId`, `type` (`status.request` or `location.request`), optional `priority`, and optional wake behavior."
           },
           "response": []
         },
@@ -1960,14 +2345,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nodeId\": \"node-123\"\n}"
+              "raw": "{}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/pending/pull",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "pending", "pull"]
             },
-            "description": "Pull the next queued pending payload for a node."
+            "description": "Pull pending actions with `node.pending.pull` (no request params required by upstream schema)."
           },
           "response": []
         },
@@ -1983,14 +2368,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nodeId\": \"node-123\",\n  \"itemId\": \"pending-123\"\n}"
+              "raw": "{\n  \"ids\": [\"pending-123\"]\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/nodes/pending/ack",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "nodes", "pending", "ack"]
             },
-            "description": "Acknowledge a pending node queue item with `node.pending.ack`."
+            "description": "Acknowledge pending node queue items with `node.pending.ack` using `ids` array."
           },
           "response": []
         }
@@ -2016,7 +2401,7 @@
                 }
               ]
             },
-            "description": "Return the upstream `health` snapshot, optionally forcing a live probe."
+            "description": "Return the upstream `health` snapshot through the local `openclaw gateway call health` bridge, optionally forcing a live probe."
           },
           "response": []
         },
@@ -2030,7 +2415,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "gateway", "status"]
             },
-            "description": "Return the upstream `status` summary via the gateway bridge."
+            "description": "Return the upstream `status` summary through the local `openclaw gateway call status` bridge."
           },
           "response": []
         },
@@ -2058,7 +2443,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "heartbeat", "last"]
             },
-            "description": "Return the last recorded upstream heartbeat event."
+            "description": "Return the last recorded upstream heartbeat event through the local `openclaw gateway call last-heartbeat` bridge."
           },
           "response": []
         },
@@ -2533,6 +2918,29 @@
               "path": ["api", "wizard", "wizard-session-123"]
             },
             "description": "Read wizard session status via the REST shortcut for `wizard.status`."
+          },
+          "response": []
+        },
+        {
+          "name": "Wizard Status (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"wizard-session-123\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/wizard/status",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "wizard", "status"]
+            },
+            "description": "Call upstream `wizard.status` directly with the original request body shape when you want parity with gateway clients instead of using the GET shortcut path."
           },
           "response": []
         },
@@ -3114,6 +3522,34 @@
       "name": "Devices",
       "item": [
         {
+          "name": "List Devices (CLI Legacy)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/devices",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "devices"]
+            },
+            "description": "List devices using the local CLI fallback `openclaw devices list`. This is separate from the upstream gateway pairing APIs below."
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Device (CLI Legacy)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/devices/approve/req-123",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "devices", "approve", "req-123"]
+            },
+            "description": "Approve the latest pending device request by request ID using the local CLI fallback `openclaw devices approve <requestId>`. Use the `requestId` returned by `openclaw devices list`, not a paired `deviceId`."
+          },
+          "response": []
+        },
+        {
           "name": "List Device Pairing",
           "request": {
             "method": "GET",
@@ -3257,7 +3693,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "doctor", "memory-status"]
             },
-            "description": "Get a management-layer readiness summary for memory embeddings based on the current default agent provider and configured credentials."
+            "description": "Get a management-layer readiness summary for memory embeddings based on the current default agent provider and configured credentials. OAuth-only chat providers (for example `openai-codex`) do not satisfy embeddings readiness by themselves."
           },
           "response": [
             {
@@ -3359,14 +3795,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"deleteData\": false\n}"
+              "raw": "{\n  \"deleteData\": true\n}"
             },
             "url": {
               "raw": "{{BASE_URL}}/api/agents/ops",
               "host": ["{{BASE_URL}}"],
               "path": ["api", "agents", "ops"]
             },
-            "description": "Delete a non-default agent. Set `deleteData=true` to remove its persisted config directory too."
+            "description": "Delete a non-default agent. By default the management API also removes the agent's workspace, agent runtime directory, and session transcript directory; send `deleteData=false` to keep those files."
           },
           "response": []
         },
@@ -3417,7 +3853,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "agents", "main", "api-key"]
             },
-            "description": "Store or replace one provider API key for a specific agent and restart OpenClaw."
+            "description": "Store or replace one provider API key for a specific agent and restart OpenClaw. Pasted secrets are normalized before being written to auth profiles. OAuth-only providers such as `openai-codex` are rejected here and must use `/api/config/chatgpt-oauth/*` endpoints."
           },
           "response": []
         }
@@ -3436,7 +3872,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "agents", "main", "files"]
             },
-            "description": "List supported upstream-style agent workspace files such as `AGENTS.md`, `SOUL.md`, and `MEMORY.md` for one agent. Returns existence and file metadata when present."
+            "description": "List supported upstream-style agent workspace files such as `AGENTS.md`, `SOUL.md`, `BOOT.md`, `BOOTSTRAP.md`, and `MEMORY.md` for one agent. Returns existence and file metadata when present."
           },
           "response": [
             {
@@ -3457,7 +3893,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "agents", "main", "files", "AGENTS.md"]
             },
-            "description": "Read the content of one supported agent workspace file. Only canonical OpenClaw workspace file names are allowed."
+            "description": "Read the content of one supported agent workspace file. Only canonical OpenClaw workspace file names are allowed, and symlink targets outside the agent workspace are rejected."
           },
           "response": [
             {
@@ -3487,7 +3923,7 @@
               "host": ["{{BASE_URL}}"],
               "path": ["api", "agents", "main", "files", "AGENTS.md"]
             },
-            "description": "Create or update one allowed workspace file for an agent. The server rejects unsupported names and path traversal attempts."
+            "description": "Create or update one allowed workspace file for an agent. The server rejects unsupported names, path traversal attempts, and symlink targets that escape the agent workspace."
           },
           "response": [
             {
@@ -3497,6 +3933,187 @@
               "body": "{\n  \"ok\": true,\n  \"agentId\": \"main\",\n  \"workspace\": \"/opt/openclaw/config/workspace-main\",\n  \"updated\": true,\n  \"file\": {\n    \"name\": \"AGENTS.md\",\n    \"path\": \"/opt/openclaw/config/workspace-main/AGENTS.md\",\n    \"exists\": true,\n    \"missing\": false,\n    \"size\": 62,\n    \"updatedAtMs\": 1742732155123\n  }\n}"
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "Bindings",
+      "item": [
+        {
+          "name": "List Bindings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/bindings",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "bindings"]
+            },
+            "description": "List current routing bindings from management config. Each binding maps one `match` object to an `agentId`."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "status": "OK",
+              "code": 200,
+              "body": "{\n  \"ok\": true,\n  \"count\": 1,\n  \"bindings\": [\n    {\n      \"agentId\": \"main\",\n      \"match\": {\n        \"channel\": \"telegram\",\n        \"accountId\": \"ops-bot\"\n      }\n    }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "Create Binding",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"main\",\n  \"match\": {\n    \"channel\": \"telegram\",\n    \"accountId\": \"ops-bot\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/bindings",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "bindings"]
+            },
+            "description": "Create a new routing binding. `match.channel` is required and `agentId` must reference an existing managed agent."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Binding",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"ops\",\n  \"match\": {\n    \"channel\": \"telegram\",\n    \"accountId\": \"ops-bot\",\n    \"chatType\": \"group\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/bindings/0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "bindings", "0"]
+            },
+            "description": "Update one binding by index. You can replace `agentId`, `match`, or both. When sending `match`, `match.channel` is still required."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Binding",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/bindings/0",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "bindings", "0"]
+            },
+            "description": "Delete one routing binding by numeric index."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "ChatGPT OAuth",
+      "item": [
+        {
+          "name": "Start ChatGPT OAuth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"main\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/chatgpt-oauth/start",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "chatgpt-oauth", "start"]
+            },
+            "description": "Start the ChatGPT OAuth flow for one agent. Response includes `sessionId` and `oauthUrl`; open `oauthUrl` in a browser, then send the final redirect URL to the complete endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "Complete ChatGPT OAuth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"paste-session-id-from-start\",\n  \"redirectUrl\": \"http://localhost:1455/auth/callback?code=example&state=example\",\n  \"model\": \"openai-codex/gpt-5.4\",\n  \"switchProvider\": true\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/chatgpt-oauth/complete",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "chatgpt-oauth", "complete"]
+            },
+            "description": "Complete OAuth after browser login. Supply the `sessionId` from the start call and either the full redirect URL containing both `code` and `state` (query or hash params), or a compact `code#state` value (for CSRF validation). When `switchProvider` is true (default), the management API loads the built-in `openai-codex` template into active config, applies the selected model override, and restarts OpenClaw."
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh ChatGPT OAuth Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"main\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/chatgpt-oauth/refresh",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "chatgpt-oauth", "refresh"]
+            },
+            "description": "Refresh the stored OAuth token for one agent using the saved refresh token."
+          },
+          "response": []
+        },
+        {
+          "name": "Get ChatGPT OAuth Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/chatgpt-oauth/status?agentId=main",
+              "host": ["{{BASE_URL}}"],
+              "path": ["api", "config", "chatgpt-oauth", "status"],
+              "query": [
+                {
+                  "key": "agentId",
+                  "value": "main",
+                  "description": "Optional managed agent id; defaults to main"
+                }
+              ]
+            },
+            "description": "Inspect whether an OAuth token exists for the selected agent, including refresh-token presence and expiry metadata."
+          },
+          "response": []
         }
       ]
     },

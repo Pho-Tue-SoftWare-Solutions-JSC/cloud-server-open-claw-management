@@ -34,6 +34,7 @@ const AGENT_WORKSPACE_FILES = [
   'IDENTITY.md',
   'USER.md',
   'HEARTBEAT.md',
+  'BOOT.md',
   'BOOTSTRAP.md',
   'MEMORY.md',
   'memory.md'
@@ -457,26 +458,26 @@ function isAllowedAgentWorkspaceFile(name) {
 }
 
 function getAgentWorkspaceFileInfo(workspaceDir, name) {
-  const filePath = path.join(workspaceDir, name);
   try {
-    const stat = fs.statSync(filePath);
+    const resolved = resolveAgentWorkspaceFile({ agents: { list: [] } }, 'main', name, workspaceDir);
+    const stat = fs.statSync(resolved.ioPath);
     if (!stat.isFile()) {
-      return { name, path: filePath, exists: false, missing: true };
+      return { name, path: resolved.filePath, exists: false, missing: true };
     }
     return {
       name,
-      path: filePath,
+      path: resolved.filePath,
       exists: true,
       missing: false,
       size: stat.size,
       updatedAtMs: Math.floor(stat.mtimeMs)
     };
   } catch {
-    return { name, path: filePath, exists: false, missing: true };
+    return { name, path: path.join(workspaceDir, name), exists: false, missing: true };
   }
 }
 
-function resolveAgentWorkspaceFile(config, agentId, name) {
+function resolveAgentWorkspaceFile(config, agentId, name, workspaceDirOverride) {
   if (!isValidAgentId(agentId)) {
     throw new Error('Invalid agent id');
   }
@@ -485,11 +486,30 @@ function resolveAgentWorkspaceFile(config, agentId, name) {
     throw new Error('Unsupported workspace file name');
   }
 
-  const workspaceDir = getAgentWorkspaceDir(config, agentId);
+  const workspaceDir = workspaceDirOverride || getAgentWorkspaceDir(config, agentId);
   const resolvedWorkspaceDir = path.resolve(workspaceDir);
+  const workspaceReal = fs.existsSync(resolvedWorkspaceDir)
+    ? fs.realpathSync.native(resolvedWorkspaceDir)
+    : resolvedWorkspaceDir;
   const filePath = path.resolve(resolvedWorkspaceDir, decodedName);
 
   if (path.dirname(filePath) !== resolvedWorkspaceDir) {
+    throw new Error('Unsafe workspace file path');
+  }
+
+  let ioPath = filePath;
+  if (fs.existsSync(filePath)) {
+    ioPath = fs.realpathSync.native(filePath);
+  } else {
+    const parentPath = path.dirname(filePath);
+    const parentReal = fs.existsSync(parentPath) ? fs.realpathSync.native(parentPath) : workspaceReal;
+    if (parentReal !== workspaceReal) {
+      throw new Error('Unsafe workspace file path');
+    }
+  }
+
+  const relativeToWorkspace = path.relative(workspaceReal, ioPath);
+  if (!relativeToWorkspace || relativeToWorkspace.startsWith('..') || path.isAbsolute(relativeToWorkspace)) {
     throw new Error('Unsafe workspace file path');
   }
 
@@ -497,7 +517,9 @@ function resolveAgentWorkspaceFile(config, agentId, name) {
     agentId,
     name: decodedName,
     workspaceDir,
-    filePath
+    workspaceReal,
+    filePath,
+    ioPath
   };
 }
 
@@ -527,6 +549,247 @@ function parseFrontmatterValue(rawValue) {
     return value.slice(1, -1);
   }
   return value;
+}
+
+function normalizeSecretInput(value) {
+  if (typeof value !== 'string') return '';
+  const collapsed = value.replace(/[\r\n\u2028\u2029]+/g, '');
+  let latin1Only = '';
+  for (const char of collapsed) {
+    const codePoint = char.codePointAt(0);
+    if (typeof codePoint === 'number' && codePoint <= 0xff) latin1Only += char;
+  }
+  return latin1Only.trim();
+}
+
+function normalizeSensitiveValues(value, parentKey = '') {
+  if (Array.isArray(value)) {
+    return value.map(item => normalizeSensitiveValues(item, parentKey));
+  }
+  if (isPlainObject(value)) {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) {
+      out[key] = normalizeSensitiveValues(item, key);
+    }
+    return out;
+  }
+  if (typeof value === 'string' && isSensitiveKeyName(parentKey)) {
+    return normalizeSecretInput(value);
+  }
+  return value;
+}
+
+function isLoopbackLikeHostname(hostname) {
+  const normalized = String(hostname || '').trim().replace(/^\[(.*)\]$/, '$1').toLowerCase();
+  if (!normalized) return false;
+  if (normalized === 'localhost' || normalized === '0.0.0.0' || normalized === '::1') return true;
+  if (/^127(?:\.\d{1,3}){3}$/.test(normalized)) return true;
+  if (/^::ffff:127(?:\.\d{1,3}){3}$/.test(normalized)) return true;
+  return false;
+}
+
+function isLoopbackCustomProviderBaseUrl(baseUrl) {
+  try {
+    const parsed = new URL(String(baseUrl || '').trim());
+    if (!/^https?:$/i.test(parsed.protocol)) return false;
+    return isLoopbackLikeHostname(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function getCustomProviderEnvKey(providerName) {
+  return `CUSTOM_${String(providerName || '').toUpperCase().replace(/-/g, '_')}_API_KEY`;
+}
+
+const CUSTOM_PROVIDER_DEFAULT_CONTEXT_WINDOW = 16000;
+const CUSTOM_PROVIDER_DEFAULT_MAX_TOKENS = 4096;
+const AZURE_CUSTOM_PROVIDER_CONTEXT_WINDOW = 400000;
+const AZURE_CUSTOM_PROVIDER_MAX_TOKENS = 16384;
+
+function isAzureFoundryCustomProviderUrl(baseUrl) {
+  try {
+    return new URL(String(baseUrl || '').trim()).hostname.toLowerCase().endsWith('.services.ai.azure.com');
+  } catch {
+    return false;
+  }
+}
+
+function isAzureOpenAiCustomProviderUrl(baseUrl) {
+  try {
+    return new URL(String(baseUrl || '').trim()).hostname.toLowerCase().endsWith('.openai.azure.com');
+  } catch {
+    return false;
+  }
+}
+
+function isAzureCustomProviderUrl(baseUrl) {
+  return isAzureFoundryCustomProviderUrl(baseUrl) || isAzureOpenAiCustomProviderUrl(baseUrl);
+}
+
+function transformAzureCustomProviderBaseUrl(baseUrl) {
+  const normalizedUrl = String(baseUrl || '').trim().replace(/\/+$/, '');
+  if (normalizedUrl.endsWith('/openai/v1')) return normalizedUrl;
+  const deploymentIdx = normalizedUrl.indexOf('/openai/deployments/');
+  const base = deploymentIdx !== -1 ? normalizedUrl.slice(0, deploymentIdx) : normalizedUrl;
+  return `${base}/openai/v1`;
+}
+
+function removeCaseInsensitiveHeader(headers, key) {
+  for (const headerKey of Object.keys(headers || {})) {
+    if (headerKey.toLowerCase() === String(key || '').toLowerCase()) {
+      delete headers[headerKey];
+    }
+  }
+}
+
+function applyCustomProviderRuntimeShape(providerConfig, options = {}) {
+  const rawBaseUrl = String(options.baseUrl || providerConfig.baseUrl || '').trim();
+  const normalizedBaseUrl = isAzureCustomProviderUrl(rawBaseUrl)
+    ? transformAzureCustomProviderBaseUrl(rawBaseUrl)
+    : rawBaseUrl;
+
+  providerConfig.baseUrl = normalizedBaseUrl;
+  if (isAzureOpenAiCustomProviderUrl(rawBaseUrl)) {
+    providerConfig.api = 'openai-responses';
+  } else if (options.api) {
+    providerConfig.api = options.api;
+  } else if (!providerConfig.api) {
+    providerConfig.api = 'openai-completions';
+  }
+
+  return normalizedBaseUrl;
+}
+
+function buildCustomProviderModelEntry(modelId, modelName, baseUrl) {
+  const isAzure = isAzureCustomProviderUrl(baseUrl);
+  return {
+    id: modelId,
+    name: modelName || modelId,
+    contextWindow: isAzure ? AZURE_CUSTOM_PROVIDER_CONTEXT_WINDOW : CUSTOM_PROVIDER_DEFAULT_CONTEXT_WINDOW,
+    maxTokens: isAzure ? AZURE_CUSTOM_PROVIDER_MAX_TOKENS : CUSTOM_PROVIDER_DEFAULT_MAX_TOKENS,
+    input: ['text'],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    reasoning: false,
+    ...(isAzureOpenAiCustomProviderUrl(baseUrl) ? { compat: { supportsStore: false } } : {})
+  };
+}
+
+function loadCustomProviderTemplateProviders() {
+  const providers = {};
+  let files = [];
+  try {
+    files = fs.readdirSync(TEMPLATES_DIR).filter(file => file.endsWith('.json'));
+  } catch {
+    return providers;
+  }
+
+  for (const file of files) {
+    const providerName = file.replace(/\.json$/i, '');
+    if (PROVIDERS[providerName] || PROVIDERS[resolveProvider(providerName)]) continue;
+    try {
+      const tpl = JSON.parse(fs.readFileSync(`${TEMPLATES_DIR}/${file}`, 'utf8'));
+      if (!isPlainObject(tpl?.models?.providers)) continue;
+      Object.assign(providers, deepClone(tpl.models.providers));
+    } catch {}
+  }
+
+  return providers;
+}
+
+function applyBuiltInProviderTemplate(config, provider, modelOverride) {
+  const providerConfig = PROVIDERS[provider];
+  if (!providerConfig) {
+    throw new Error(`Unknown built-in provider: ${provider}`);
+  }
+
+  const templatePath = providerConfig.configTemplate;
+  if (!fs.existsSync(templatePath)) {
+    throw new Error(`Template config not found: ${templatePath}`);
+  }
+
+  const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
+  const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
+
+  if (!config.agents) config.agents = template.agents ? JSON.parse(JSON.stringify(template.agents)) : {};
+  if (!config.agents.defaults) config.agents.defaults = template.agents?.defaults ? JSON.parse(JSON.stringify(template.agents.defaults)) : {};
+  if (!config.agents.defaults.model) config.agents.defaults.model = template.agents?.defaults?.model ? JSON.parse(JSON.stringify(template.agents.defaults.model)) : {};
+
+  let finalModel = modelOverride || template.agents?.defaults?.model?.primary;
+  if (!finalModel) {
+    throw new Error(`Provider "${provider}" template has no default model`);
+  }
+  if (finalModel.includes('/')) {
+    const [prefix, ...rest] = finalModel.split('/');
+    finalModel = `${resolveProvider(prefix)}/${rest.join('/')}`;
+  }
+  config.agents.defaults.model.primary = finalModel;
+
+  config.gateway = { ...(template.gateway || {}), ...(config.gateway || {}) };
+  config.gateway.auth = { token };
+  if (template.gateway?.controlUi || config.gateway.controlUi) {
+    config.gateway.controlUi = { ...(template.gateway?.controlUi || {}), ...(config.gateway.controlUi || {}) };
+  }
+
+  if (!config.browser && template.browser) config.browser = template.browser;
+
+  const customProviderTemplates = loadCustomProviderTemplateProviders();
+  if (template.models || Object.keys(customProviderTemplates).length > 0) {
+    config.models = template.models ? JSON.parse(JSON.stringify(template.models)) : { mode: 'merge', providers: {} };
+    if (!config.models.providers) config.models.providers = {};
+    Object.assign(config.models.providers, customProviderTemplates);
+    config.models.mode = config.models.mode || 'merge';
+  } else {
+    delete config.models;
+  }
+
+  if (!providerConfig.oauthOnly && providerConfig.envKey) {
+    const authProvider = providerConfig.authProfileProvider;
+    const existingKey = getEnvValue(providerConfig.envKey);
+    if (existingKey) {
+      setAuthProfileApiKey(authProvider, existingKey);
+    }
+  }
+
+  return finalModel;
+}
+
+function syncCustomProviderApiKey(providerName, providerConfig, apiKey) {
+  const envKey = getCustomProviderEnvKey(providerName);
+  if (apiKey) {
+    providerConfig.apiKey = `\${${envKey}}`;
+    setEnvValue(envKey, apiKey);
+    setAuthProfileApiKey(providerName, apiKey);
+  } else {
+    delete providerConfig.apiKey;
+    try { removeEnvValue(envKey); } catch {}
+    try { removeAgentApiKey('main', providerName); } catch {}
+  }
+
+  if (isAzureCustomProviderUrl(providerConfig.baseUrl)) {
+    providerConfig.authHeader = false;
+    const headers = isPlainObject(providerConfig.headers) ? { ...providerConfig.headers } : {};
+    removeCaseInsensitiveHeader(headers, 'api-key');
+    if (apiKey) headers['api-key'] = `\${${envKey}}`;
+    if (Object.keys(headers).length > 0) providerConfig.headers = headers;
+    else delete providerConfig.headers;
+  } else {
+    if (providerConfig.authHeader === false) delete providerConfig.authHeader;
+    if (isPlainObject(providerConfig.headers)) {
+      const headers = { ...providerConfig.headers };
+      removeCaseInsensitiveHeader(headers, 'api-key');
+      if (Object.keys(headers).length > 0) providerConfig.headers = headers;
+      else delete providerConfig.headers;
+    }
+  }
+
+  return !!apiKey;
+}
+
+function getFallbackProviderModelRef(providerName, models) {
+  if (!Array.isArray(models) || models.length === 0) return 'anthropic/claude-sonnet-4-20250514';
+  const firstModelId = typeof models[0]?.id === 'string' ? models[0].id.trim() : '';
+  return firstModelId ? `${providerName}/${firstModelId}` : 'anthropic/claude-sonnet-4-20250514';
 }
 
 function parseSkillDocument(content) {
@@ -1603,6 +1866,46 @@ function runServiceAction(cmd, timeout = 30000) {
   throw new Error(`Unsupported service action: ${cmd}`);
 }
 
+function openclawCli(args = [], options = {}) {
+  const timeoutMs = Number(options.timeoutMs || options.timeout || 30000) || 30000;
+  const argv = Array.isArray(args) ? args.map(value => String(value)) : [];
+  const wantsJson = options.json === true;
+
+  if (wantsJson && !argv.includes('--json')) argv.push('--json');
+
+  try {
+    const stdout = execFileSync(OPENCLAW_BIN, argv, {
+      cwd: OPENCLAW_HOME,
+      env: { ...process.env, HOME: OPENCLAW_HOME },
+      timeout: timeoutMs,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024
+    });
+    const output = String(stdout || '').trim();
+    return wantsJson ? parseCliJsonOutput(output) : output;
+  } catch (error) {
+    if (error && error.stdout) error.stdout = String(error.stdout);
+    if (error && error.stderr) error.stderr = String(error.stderr);
+    throw error;
+  }
+}
+
+function gatewayMethod(method, params = {}, options = {}) {
+  const timeoutMs = Number(options.timeoutMs || options.timeout || 30000) || 30000;
+  const normalizedParams = normalizeGatewayParams(params);
+  const args = ['gateway', 'call', String(method), '--timeout', String(timeoutMs)];
+
+  if (Object.keys(normalizedParams).length > 0) {
+    args.push('--params', JSON.stringify(normalizedParams));
+  }
+  if (options.expectFinal === true) {
+    args.push('--expect-final');
+  }
+
+  return openclawCli(args, { timeoutMs, json: true });
+}
+
 // =============================================================================
 // On-demand device auto-approve polling (activated by /pair endpoint)
 // Reads/writes device JSON files directly — no CLI/gateway needed
@@ -2269,7 +2572,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/heartbeat/enabled')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('set-heartbeats', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('set-heartbeats', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'set-heartbeats', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2280,8 +2585,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/logs/tail')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('logs.tail', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('logs.tail', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'logs.tail', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2322,7 +2629,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/tts/enable')) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const result = gatewayMethod('tts.enable', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('tts.enable', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'tts.enable', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2333,7 +2642,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/tts/disable')) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const result = gatewayMethod('tts.disable', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('tts.disable', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'tts.disable', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2344,7 +2655,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/tts/convert')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('tts.convert', body, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('tts.convert', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'tts.convert', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2355,7 +2668,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/tts/provider')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('tts.setProvider', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('tts.setProvider', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'tts.setProvider', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2376,7 +2691,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/voicewake')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('voicewake.set', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('voicewake.set', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'voicewake.set', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2387,7 +2704,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/wake')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('wake', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('wake', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'wake', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2398,8 +2717,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/cron')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('cron.list', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('cron.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'cron.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2410,8 +2731,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/cron/status')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('cron.status', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('cron.status', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'cron.status', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2422,7 +2745,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/cron')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('cron.add', body, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('cron.add', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'cron.add', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2434,6 +2759,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { id: m.params.id, ...body, patch: body.patch || body };
+      delete params.timeoutMs;
       const result = gatewayMethod('cron.update', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'cron.update', id: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2446,6 +2772,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, id: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('cron.remove', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'cron.remove', id: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2458,6 +2785,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, id: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('cron.run', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'cron.run', id: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2469,8 +2797,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/cron/runs')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('cron.runs', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('cron.runs', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'cron.runs', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2481,8 +2811,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/devices/pairing')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('device.pair.list', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('device.pair.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'device.pair.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2493,7 +2825,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/devices/pairing/approve')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('device.pair.approve', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('device.pair.approve', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'device.pair.approve', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2504,7 +2838,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/devices/pairing/reject')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('device.pair.reject', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('device.pair.reject', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'device.pair.reject', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2516,6 +2852,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, deviceId: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('device.pair.remove', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'device.pair.remove', deviceId: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2528,6 +2865,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { ...body, deviceId: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('device.token.rotate', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'device.token.rotate', deviceId: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2540,6 +2878,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { ...body, deviceId: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('device.token.revoke', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'device.token.revoke', deviceId: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2551,7 +2890,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/wizard/start')) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const result = gatewayMethod('wizard.start', body, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('wizard.start', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'wizard.start', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2562,7 +2903,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/wizard/next')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('wizard.next', body, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('wizard.next', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'wizard.next', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2573,7 +2916,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/wizard/cancel')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('wizard.cancel', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('wizard.cancel', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'wizard.cancel', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2584,7 +2929,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/wizard/status')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('wizard.status', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('wizard.status', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'wizard.status', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2597,6 +2944,7 @@ const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
       const params = { ...queryParams, sessionId: m.params.sessionId };
+      delete params.timeoutMs;
       const result = gatewayMethod('wizard.status', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'wizard.status', sessionId: m.params.sessionId, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2618,7 +2966,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/exec-approvals')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('exec.approvals.set', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('exec.approvals.set', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'exec.approvals.set', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2640,6 +2990,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { ...body, nodeId: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('exec.approvals.node.set', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'exec.approvals.node.set', nodeId: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2680,6 +3031,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { ...body, id: m.params.id };
+      delete params.timeoutMs;
       const result = gatewayMethod('exec.approval.resolve', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'exec.approval.resolve', id: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2699,6 +3051,7 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'path is required' });
       }
       const params = { ...body, method };
+      delete params.timeoutMs;
       const result = gatewayMethod('browser.request', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'browser.request', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2712,6 +3065,7 @@ const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
       const params = { ...queryParams, sessionKey: m.params.sessionKey };
+      delete params.timeoutMs;
       const result = gatewayMethod('chat.history', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'chat.history', sessionKey: m.params.sessionKey, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2727,6 +3081,7 @@ const server = http.createServer(async (req, res) => {
         ...body,
         idempotencyKey: body.idempotencyKey || crypto.randomUUID()
       };
+      delete params.expectFinal;
       const result = gatewayMethod('chat.send', params, { timeoutMs: Number(body.timeoutMs || 120000) || 120000 });
       return json(res, 200, {
         ok: true,
@@ -2745,6 +3100,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, sessionKey: m.params.sessionKey };
+      delete params.timeoutMs;
       const result = gatewayMethod('chat.abort', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'chat.abort', sessionKey: m.params.sessionKey, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -2756,7 +3112,7 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/secrets/reload')) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const result = gatewayMethod('secrets.reload', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const result = gatewayMethod('secrets.reload', {}, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'secrets.reload', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2767,7 +3123,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/secrets/resolve')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('secrets.resolve', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('secrets.resolve', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'secrets.resolve', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2788,8 +3146,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/talk/config')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('talk.config', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('talk.config', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'talk.config', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2800,7 +3160,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/talk/speak')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('talk.speak', body, { timeoutMs: Number(body.timeoutMs || 120000) || 120000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('talk.speak', params, { timeoutMs: Number(body.timeoutMs || 120000) || 120000 });
       return json(res, 200, { ok: true, method: 'talk.speak', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2811,7 +3173,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/talk/mode')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('talk.mode', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('talk.mode', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'talk.mode', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2837,6 +3201,8 @@ const server = http.createServer(async (req, res) => {
         ...body,
         idempotencyKey: body.idempotencyKey || crypto.randomUUID()
       };
+      delete params.timeoutMs;
+      delete params.expectFinal;
       const result = gatewayMethod('send', params, { timeoutMs: Number(body.timeoutMs || 120000) || 120000 });
       return json(res, 200, {
         ok: true,
@@ -2853,7 +3219,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/agents/identity/resolve')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('agent.identity.get', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('agent.identity.get', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'agent.identity.get', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2868,6 +3236,9 @@ const server = http.createServer(async (req, res) => {
         ...body,
         idempotencyKey: body.idempotencyKey || crypto.randomUUID()
       };
+      if (params.timeout === undefined && body.timeoutMs !== undefined) params.timeout = body.timeoutMs;
+      delete params.timeoutMs;
+      delete params.expectFinal;
       const result = gatewayMethod('agent', params, {
         timeoutMs: Number(body.timeoutMs || 120000) || 120000,
         expectFinal: body.expectFinal === true
@@ -2899,7 +3270,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/system/events')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('system-event', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('system-event', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'system-event', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -3237,12 +3610,10 @@ const server = http.createServer(async (req, res) => {
         config.agents.defaults.model.primary = model.includes('/') ? model : `${provider}/${model}`;
 
         // Merge custom provider's models.providers into active config
-        if (customTpl.models?.providers) {
-          if (!config.models) config.models = { mode: 'merge', providers: {} };
-          if (!config.models.providers) config.models.providers = {};
-          config.models.mode = 'merge';
-          Object.assign(config.models.providers, customTpl.models.providers);
-        }
+        if (!config.models) config.models = { mode: 'merge', providers: {} };
+        if (!config.models.providers) config.models.providers = {};
+        config.models.mode = 'merge';
+        Object.assign(config.models.providers, loadCustomProviderTemplateProviders());
 
         config.gateway = { ...(customTpl.gateway || {}), ...(config.gateway || {}) };
         config.gateway.auth = { token };
@@ -3254,50 +3625,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // --- Built-in provider ---
-      const templatePath = providerConfig.configTemplate;
-      if (!fs.existsSync(templatePath)) {
-        return json(res, 500, { ok: false, error: `Template config not found: ${templatePath}` });
-      }
-
-      const template = JSON.parse(fs.readFileSync(templatePath, 'utf8'));
-      const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
-
-      // Update model from template or body
-      if (!config.agents) config.agents = template.agents;
-      // Normalize model prefix (e.g. gemini/model → google/model)
-      let finalModel = model || template.agents.defaults.model.primary;
-      if (finalModel && finalModel.includes('/')) {
-        const [prefix, ...rest] = finalModel.split('/');
-        finalModel = `${resolveProvider(prefix)}/${rest.join('/')}`;
-      }
-      config.agents.defaults.model.primary = finalModel;
-
-      // Merge gateway: keep existing settings, ensure auth token is correct
-      config.gateway = { ...template.gateway, ...(config.gateway || {}) };
-      config.gateway.auth = { token };
-      // Deep merge controlUi from template (ensure new required fields are always present)
-      config.gateway.controlUi = { ...template.gateway.controlUi, ...(config.gateway.controlUi || {}) };
-
-      // Preserve browser from template if not set
-      if (!config.browser) config.browser = template.browser;
-
-      // Copy models section from template
-      // Custom providers are stored in template files, no need to preserve in active config
-      if (template.models) {
-        config.models = template.models;
-      } else {
-        delete config.models;
-      }
-
-      // Write auth-profiles.json if there's an API key in env for this provider
-      // Skip for oauth-only providers (e.g. openai-codex uses OAuth token, not API key)
-      if (!providerConfig.oauthOnly) {
-        const authProvider = providerConfig.authProfileProvider;
-        const existingKey = getEnvValue(providerConfig.envKey);
-        if (existingKey) {
-          setAuthProfileApiKey(authProvider, existingKey);
-        }
-      }
+      const finalModel = applyBuiltInProviderTemplate(config, provider, model);
 
       writeConfig(config);
       restartService(OPENCLAW_SERVICE);
@@ -3312,11 +3640,15 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PUT', '/api/config/api-key')) {
     try {
       const body = await parseBody(req);
-      const { provider: rawProvider, apiKey, agentId } = body;
+      const { provider: rawProvider, agentId } = body;
+      const apiKey = normalizeSecretInput(body.apiKey);
       const provider = resolveProvider(rawProvider);
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      if (providerConfig.oauthOnly) {
+        return json(res, 400, { ok: false, error: `Provider "${provider}" uses OAuth credentials. Use /api/config/chatgpt-oauth/* endpoints instead.` });
+      }
       if (!apiKey) return json(res, 400, { ok: false, error: 'Missing apiKey' });
       if (agentId && !isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agentId' });
 
@@ -3347,6 +3679,9 @@ const server = http.createServer(async (req, res) => {
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      if (providerConfig.oauthOnly) {
+        return json(res, 400, { ok: false, error: `Provider "${provider}" uses OAuth credentials. Use /api/config/chatgpt-oauth/* endpoints instead.` });
+      }
       if (agentId && !isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agentId' });
 
       const targetAgent = agentId || 'main';
@@ -3371,8 +3706,12 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/config/test-key')) {
     try {
       const body = await parseBody(req);
-      const provider = PROVIDERS[resolveProvider(body.provider)];
+      const providerName = resolveProvider(body.provider);
+      const provider = PROVIDERS[providerName];
       if (!provider) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      if (provider.oauthOnly) {
+        return json(res, 400, { ok: false, error: `Provider "${providerName}" uses OAuth credentials and does not support API key validation.` });
+      }
       const ok = provider.testFn(body.apiKey);
       return json(res, 200, { ok, error: ok ? null : 'API key invalid or expired' });
     } catch { return json(res, 500, { ok: false, error: 'Error testing API key' }); }
@@ -3384,10 +3723,12 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/config/custom-provider')) {
     try {
       const body = await parseBody(req);
-      const { baseUrl, model, modelName, apiKey, api } = body;
+      const { baseUrl, model, modelName, api } = body;
+      const apiKey = normalizeSecretInput(body.apiKey);
+      const allowBlankApiKey = isLoopbackCustomProviderBaseUrl(baseUrl);
 
-      if (!baseUrl || !model || !apiKey) {
-        return json(res, 400, { ok: false, error: 'Missing required fields: baseUrl, model, apiKey' });
+      if (!baseUrl || !model || (!apiKey && !allowBlankApiKey)) {
+        return json(res, 400, { ok: false, error: allowBlankApiKey ? 'Missing required fields: baseUrl, model' : 'Missing required fields: baseUrl, model, apiKey' });
       }
 
       const parts = model.split('/');
@@ -3409,7 +3750,6 @@ const server = http.createServer(async (req, res) => {
         return json(res, 400, { ok: false, error: 'Invalid baseUrl' });
       }
 
-      const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
       const tplPath = `${TEMPLATES_DIR}/${providerName}.json`;
 
       // Create or update template file
@@ -3422,35 +3762,31 @@ const server = http.createServer(async (req, res) => {
       tpl.models.mode = 'merge';
       if (!tpl.models.providers[providerName]) {
         tpl.models.providers[providerName] = {
-          baseUrl,
-          apiKey: `\${${envKey}}`,
-          api: api || 'openai-completions',
-          models: [{ id: modelId, name: modelName || modelId }]
+          models: [buildCustomProviderModelEntry(modelId, modelName, baseUrl)]
         };
       } else {
         const p = tpl.models.providers[providerName];
-        p.baseUrl = baseUrl;
-        if (api) p.api = api;
         if (!p.models) p.models = [];
         if (!p.models.find(m => m.id === modelId)) {
-          p.models.push({ id: modelId, name: modelName || modelId });
+          p.models.push(buildCustomProviderModelEntry(modelId, modelName, baseUrl));
         }
       }
+      const effectiveBaseUrl = applyCustomProviderRuntimeShape(tpl.models.providers[providerName], { baseUrl, api });
+      syncCustomProviderApiKey(providerName, tpl.models.providers[providerName], apiKey);
       tpl.gateway = { mode: 'local', bind: 'lan', auth: { token: '${OPENCLAW_GATEWAY_TOKEN}' }, trustedProxies: ['127.0.0.1', '::1', '172.16.0.0/12', '10.0.0.0/8', '192.168.0.0/16'], controlUi: { enabled: true, allowInsecureAuth: true, dangerouslyAllowHostHeaderOriginFallback: true, dangerouslyDisableDeviceAuth: false } };
       tpl.browser = { headless: true, defaultProfile: 'openclaw', noSandbox: true };
 
       fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
-
-      // Save API key
-      setEnvValue(envKey, apiKey);
-      setAuthProfileApiKey(providerName, apiKey);
 
       // Switch to this provider (load template into active config)
       const config = readConfig();
       const token = getEnvValue('OPENCLAW_GATEWAY_TOKEN') || '';
       config.agents = tpl.agents;
       config.models = JSON.parse(JSON.stringify(tpl.models));
-      config.models.providers[providerName].apiKey = `\${${envKey}}`;
+      if (!config.models) config.models = { mode: 'merge', providers: {} };
+      if (!config.models.providers) config.models.providers = {};
+      Object.assign(config.models.providers, loadCustomProviderTemplateProviders());
+      config.models.mode = config.models.mode || 'merge';
       config.gateway = { ...tpl.gateway, ...(config.gateway || {}) };
       config.gateway.auth = { token };
       if (!config.browser) config.browser = tpl.browser;
@@ -3458,7 +3794,7 @@ const server = http.createServer(async (req, res) => {
 
       restartService(OPENCLAW_SERVICE);
 
-      return json(res, 200, { ok: true, provider: providerName, model, baseUrl, apiKey: sanitizeKey(apiKey) });
+      return json(res, 200, { ok: true, provider: providerName, model, baseUrl: effectiveBaseUrl, api: tpl.models.providers[providerName].api, apiKey: apiKey ? sanitizeKey(apiKey) : null });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3477,7 +3813,7 @@ const server = http.createServer(async (req, res) => {
           const provKey = Object.keys(tpl.models?.providers || {})[0];
           if (!provKey) continue;
           const p = tpl.models.providers[provKey];
-          const envKey = `CUSTOM_${name.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+          const envKey = getCustomProviderEnvKey(name);
           const keyVal = getEnvValue(envKey) || getAuthProfileApiKey(name);
           customProviders[name] = {
             baseUrl: p.baseUrl,
@@ -3522,22 +3858,23 @@ const server = http.createServer(async (req, res) => {
         try { new URL(body.baseUrl); } catch {
           return json(res, 400, { ok: false, error: 'Invalid baseUrl' });
         }
-        p.baseUrl = body.baseUrl;
       }
-      if (body.api) p.api = body.api;
+      const effectiveBaseUrl = applyCustomProviderRuntimeShape(p, { baseUrl: body.baseUrl || p.baseUrl, api: body.api });
 
       if (body.model) {
         const modelId = body.model.includes('/') ? body.model.split('/').slice(1).join('/') : body.model;
         if (!p.models) p.models = [];
         if (!p.models.find(m => m.id === modelId)) {
-          p.models.push({ id: modelId, name: body.modelName || modelId });
+          p.models.push(buildCustomProviderModelEntry(modelId, body.modelName, effectiveBaseUrl));
         }
       }
 
-      if (body.apiKey) {
-        const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
-        setEnvValue(envKey, body.apiKey);
-        setAuthProfileApiKey(providerName, body.apiKey);
+      if (body.apiKey !== undefined) {
+        const normalizedApiKey = normalizeSecretInput(body.apiKey);
+        if (!normalizedApiKey && !isLoopbackCustomProviderBaseUrl(p.baseUrl)) {
+          return json(res, 400, { ok: false, error: 'Invalid apiKey' });
+        }
+        syncCustomProviderApiKey(providerName, p, normalizedApiKey);
       }
 
       fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
@@ -3552,7 +3889,7 @@ const server = http.createServer(async (req, res) => {
         }
       } catch {}
 
-      return json(res, 200, { ok: true, provider: providerName, config: { baseUrl: p.baseUrl, api: p.api, models: p.models } });
+      return json(res, 200, { ok: true, provider: providerName, config: { baseUrl: p.baseUrl, api: p.api, models: p.models, authHeader: p.authHeader, headers: p.headers ? redactSensitiveData(p.headers) : undefined } });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3580,29 +3917,29 @@ const server = http.createServer(async (req, res) => {
       let config;
       try { config = readConfig(); } catch { config = {}; }
 
-      if (config.models?.providers?.[providerName]) {
+      const currentModel = config.agents?.defaults?.model?.primary || '';
+      const deletedActiveProvider = currentModel.startsWith(providerName + '/');
+      let fallbackModel = null;
+
+      if (deletedActiveProvider) {
+        fallbackModel = applyBuiltInProviderTemplate(config, 'anthropic');
+      } else if (config.models?.providers?.[providerName]) {
         delete config.models.providers[providerName];
         if (Object.keys(config.models.providers).length === 0) {
           delete config.models;
         }
       }
 
-      // If current model uses this provider, fallback to anthropic
-      const currentModel = config.agents?.defaults?.model?.primary || '';
-      if (currentModel.startsWith(providerName + '/')) {
-        config.agents.defaults.model.primary = 'anthropic/claude-sonnet-4-20250514';
-      }
-
       writeConfig(config);
 
       // Remove env var + auth profile
-      const envKey = `CUSTOM_${providerName.toUpperCase().replace(/-/g, '_')}_API_KEY`;
+      const envKey = getCustomProviderEnvKey(providerName);
       try { removeEnvValue(envKey); } catch {}
       try { removeAgentApiKey('main', providerName); } catch {}
 
       restartService(OPENCLAW_SERVICE);
 
-      return json(res, 200, { ok: true, provider: providerName, removed: true });
+      return json(res, 200, { ok: true, provider: providerName, removed: true, fallbackModel });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3642,7 +3979,26 @@ const server = http.createServer(async (req, res) => {
           modelsList.push({ id: modelId, name: modelName || modelId });
         }
         fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
-        return json(res, 200, { ok: true, provider: resolved, model: { id: modelId, name: modelName || modelId } });
+
+        let activeConfigUpdated = false;
+        if (config.models?.providers?.[resolved]) {
+          if (!Array.isArray(config.models.providers[resolved].models)) {
+            config.models.providers[resolved].models = [];
+          }
+          if (!config.models.providers[resolved].models.find(m => m.id === modelId)) {
+            config.models.providers[resolved].models.push({ id: modelId, name: modelName || modelId });
+            writeConfig(config);
+            restartManagedService('openclaw');
+            activeConfigUpdated = true;
+          }
+        }
+
+        return json(res, 200, {
+          ok: true,
+          provider: resolved,
+          model: { id: modelId, name: modelName || modelId },
+          activeConfigUpdated
+        });
       }
 
       // For custom providers: add to template file
@@ -3666,9 +4022,16 @@ const server = http.createServer(async (req, res) => {
         if (!config.models.providers[providerName].models) config.models.providers[providerName].models = [];
         config.models.providers[providerName].models.push({ id: modelId, name: modelName || modelId });
         writeConfig(config);
+        restartManagedService('openclaw');
+        return json(res, 200, {
+          ok: true,
+          provider: providerName,
+          model: { id: modelId, name: modelName || modelId },
+          activeConfigUpdated: true
+        });
       }
 
-      return json(res, 200, { ok: true, provider: providerName, model: { id: modelId, name: modelName || modelId } });
+      return json(res, 200, { ok: true, provider: providerName, model: { id: modelId, name: modelName || modelId }, activeConfigUpdated: false });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3696,7 +4059,24 @@ const server = http.createServer(async (req, res) => {
         if (idx === -1) return json(res, 404, { ok: false, error: 'Model not found' });
         modelsList.splice(idx, 1);
         fs.writeFileSync(tplPath, JSON.stringify(tpl, null, 2), 'utf8');
-        return json(res, 200, { ok: true, provider: resolved, removedModel: modelId });
+
+        let activeConfigUpdated = false;
+        if (config.models?.providers?.[resolved]?.models) {
+          const activeModels = config.models.providers[resolved].models;
+          const aIdx = activeModels.findIndex(m => m.id === modelId);
+          if (aIdx !== -1) {
+            activeModels.splice(aIdx, 1);
+            const currentModel = config.agents?.defaults?.model?.primary || '';
+            if (currentModel === `${resolved}/${modelId}`) {
+              config.agents.defaults.model.primary = getFallbackProviderModelRef(resolved, activeModels);
+            }
+            writeConfig(config);
+            restartManagedService('openclaw');
+            activeConfigUpdated = true;
+          }
+        }
+
+        return json(res, 200, { ok: true, provider: resolved, removedModel: modelId, activeConfigUpdated });
       }
 
       // For custom providers: remove from template file
@@ -3717,11 +4097,17 @@ const server = http.createServer(async (req, res) => {
         const aIdx = config.models.providers[providerName].models.findIndex(m => m.id === modelId);
         if (aIdx !== -1) {
           config.models.providers[providerName].models.splice(aIdx, 1);
+          const currentModel = config.agents?.defaults?.model?.primary || '';
+          if (currentModel === `${providerName}/${modelId}`) {
+            config.agents.defaults.model.primary = getFallbackProviderModelRef(providerName, config.models.providers[providerName].models);
+          }
           writeConfig(config);
+          restartManagedService('openclaw');
+          return json(res, 200, { ok: true, provider: providerName, removedModel: modelId, activeConfigUpdated: true });
         }
       }
 
-      return json(res, 200, { ok: true, provider: providerName, removedModel: modelId });
+      return json(res, 200, { ok: true, provider: providerName, removedModel: modelId, activeConfigUpdated: false });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3754,8 +4140,11 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/channels/status')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('channels.status', params, { timeoutMs: Number(params.timeout || 20000) || 20000 });
+      const query = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...query };
+      delete params.timeout;
+      delete params.timeoutMs;
+      const result = gatewayMethod('channels.status', params, { timeoutMs: Number(query.timeout || query.timeoutMs || 20000) || 20000 });
       return json(res, 200, { ok: true, method: 'channels.status', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -3766,7 +4155,13 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/channels/logout')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('channels.logout', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      if (params.accountId === undefined && params.account !== undefined) {
+        params.accountId = params.account;
+      }
+      delete params.account;
+      delete params.timeoutMs;
+      const result = gatewayMethod('channels.logout', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'channels.logout', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -3778,6 +4173,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, channel: m.params.channel };
+      if (params.accountId === undefined && params.account !== undefined) {
+        params.accountId = params.account;
+      }
+      delete params.account;
+      delete params.timeoutMs;
       const result = gatewayMethod('channels.logout', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'channels.logout', channel: m.params.channel, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -3795,23 +4195,27 @@ const server = http.createServer(async (req, res) => {
       if (!chConfig) {
         return json(res, 400, { ok: false, error: 'Invalid channel. Use: telegram, discord, slack, zalo' });
       }
-      if (!body.token) return json(res, 400, { ok: false, error: 'Missing token' });
+      const token = normalizeSecretInput(body.token);
+      if (!token) return json(res, 400, { ok: false, error: 'Missing token' });
+      const appToken = normalizeSecretInput(body.appToken);
+      const defaultDmPolicy = channel === 'zalo' ? 'pairing' : 'open';
 
       // 1. Set env var (as fallback)
-      setEnvValue(chConfig.envKey, body.token);
-      if (channel === 'slack' && body.appToken) {
-        setEnvValue('SLACK_APP_TOKEN', body.appToken);
+      setEnvValue(chConfig.envKey, token);
+      if (channel === 'slack' && appToken) {
+        setEnvValue('SLACK_APP_TOKEN', appToken);
       }
 
       // 2. Write channel config in openclaw.json
       const config = readConfig();
       if (!config.channels) config.channels = {};
-      config.channels[chConfig.configKey] = {
+      const nextChannelConfig = {
         enabled: true,
-        [chConfig.tokenField]: body.token,
-        dmPolicy: body.dmPolicy || 'open',
-        allowFrom: ['*']
+        [chConfig.tokenField]: token,
+        dmPolicy: body.dmPolicy || defaultDmPolicy
       };
+      if (channel !== 'zalo') nextChannelConfig.allowFrom = ['*'];
+      config.channels[chConfig.configKey] = nextChannelConfig;
 
       // 3. Enable plugin if needed (telegram is built-in, others need plugin)
       if (['zalo', 'discord', 'slack'].includes(channel)) {
@@ -3822,7 +4226,7 @@ const server = http.createServer(async (req, res) => {
 
       writeConfig(config);
       restartService(OPENCLAW_SERVICE);
-      return json(res, 200, { ok: true, channel, token: sanitizeKey(body.token) });
+      return json(res, 200, { ok: true, channel, token: sanitizeKey(token), dmPolicy: nextChannelConfig.dmPolicy });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3909,7 +4313,7 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'PATCH', '/api/channels/zalo/config')) {
     try {
       const body = await parseBody(req);
-      const patch = isPlainObject(body.patch) ? deepClone(body.patch) : deepClone(body);
+      const patch = normalizeSensitiveValues(isPlainObject(body.patch) ? deepClone(body.patch) : deepClone(body));
       delete patch.patch;
       delete patch.restart;
       delete patch.removeEnvToken;
@@ -3966,10 +4370,30 @@ const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
       const query = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('channels.status', { ...query, probe: query.probe === undefined ? true : query.probe }, { timeoutMs: Number(query.timeout || query.timeoutMs || 20000) || 20000 });
-      const filtered = isPlainObject(result) && Array.isArray(result.channels)
-        ? { ...result, channels: result.channels.filter(item => item && item.channel === 'zalo') }
-        : result;
+      const params = { ...query, probe: query.probe === undefined ? true : query.probe };
+      delete params.timeout;
+      delete params.timeoutMs;
+      const result = gatewayMethod('channels.status', params, { timeoutMs: Number(query.timeout || query.timeoutMs || 20000) || 20000 });
+      let filtered = result;
+      if (isPlainObject(result)) {
+        if (isPlainObject(result.channels)) {
+          filtered = {
+            ...result,
+            channels: result.channels.zalo ? { zalo: result.channels.zalo } : {},
+            channelAccounts: isPlainObject(result.channelAccounts) && result.channelAccounts.zalo
+              ? { zalo: result.channelAccounts.zalo }
+              : {},
+            channelDefaultAccountId: isPlainObject(result.channelDefaultAccountId) && result.channelDefaultAccountId.zalo
+              ? { zalo: result.channelDefaultAccountId.zalo }
+              : {},
+            channelOrder: Array.isArray(result.channelOrder)
+              ? result.channelOrder.filter(item => item === 'zalo')
+              : []
+          };
+        } else if (Array.isArray(result.channels)) {
+          filtered = { ...result, channels: result.channels.filter(item => item && item.channel === 'zalo') };
+        }
+      }
       return json(res, 200, { ok: true, channel: 'zalo', method: 'channels.status', result: filtered });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4077,9 +4501,25 @@ const server = http.createServer(async (req, res) => {
 
       try {
         const status = gatewayMethod('channels.status', { probe: true }, { timeoutMs });
-        diagnostics.status = isPlainObject(status) && Array.isArray(status.channels)
-          ? { ...status, channels: status.channels.filter(item => item && item.channel === 'zalo') }
-          : status;
+        if (isPlainObject(status) && isPlainObject(status.channels)) {
+          diagnostics.status = {
+            ...status,
+            channels: status.channels.zalo ? { zalo: status.channels.zalo } : {},
+            channelAccounts: isPlainObject(status.channelAccounts) && status.channelAccounts.zalo
+              ? { zalo: status.channelAccounts.zalo }
+              : {},
+            channelDefaultAccountId: isPlainObject(status.channelDefaultAccountId) && status.channelDefaultAccountId.zalo
+              ? { zalo: status.channelDefaultAccountId.zalo }
+              : {},
+            channelOrder: Array.isArray(status.channelOrder)
+              ? status.channelOrder.filter(item => item === 'zalo')
+              : []
+          };
+        } else if (isPlainObject(status) && Array.isArray(status.channels)) {
+          diagnostics.status = { ...status, channels: status.channels.filter(item => item && item.channel === 'zalo') };
+        } else {
+          diagnostics.status = status;
+        }
       } catch (e) {
         diagnostics.errors.status = e.message;
       }
@@ -4111,8 +4551,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/models')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('models.list', params, { timeoutMs: 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('models.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'models.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4123,9 +4565,25 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/tools/catalog')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('tools.catalog', params, { timeoutMs: 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('tools.catalog', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'tools.catalog', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/tools/effective — Effective tool inventory for one session
+  // =========================================================================
+  if (route(req, 'GET', '/api/tools/effective')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('tools.effective', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'tools.effective', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -4135,8 +4593,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/usage/status')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('usage.status', params, { timeoutMs: 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('usage.status', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'usage.status', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4147,8 +4607,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/usage/cost')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('usage.cost', params, { timeoutMs: 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('usage.cost', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'usage.cost', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4159,7 +4621,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/skills/install')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('skills.install', body, { timeoutMs: Number(body.timeoutMs || 120000) || 120000, expectFinal: body.expectFinal === true });
+      const params = { ...body };
+      delete params.timeoutMs;
+      delete params.expectFinal;
+      const result = gatewayMethod('skills.install', params, { timeoutMs: Number(body.timeoutMs || 120000) || 120000, expectFinal: body.expectFinal === true });
       return json(res, 200, { ok: true, method: 'skills.install', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4170,8 +4635,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/sessions')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('sessions.list', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('sessions.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'sessions.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4182,8 +4649,10 @@ const server = http.createServer(async (req, res) => {
   if ((m = route(req, 'GET', '/api/sessions/:key/preview'))) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams({ ...Object.fromEntries(url.searchParams), key: m.params.key });
-      const result = gatewayMethod('sessions.preview', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams({ ...Object.fromEntries(url.searchParams), keys: [m.params.key] });
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('sessions.preview', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'sessions.preview', key: m.params.key, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4194,7 +4663,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/sessions')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('sessions.create', body, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('sessions.create', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'sessions.create', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4206,6 +4677,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { ...body, key: m.params.key };
+      delete params.expectFinal;
       const result = gatewayMethod('sessions.send', params, {
         timeoutMs: Number(body.timeoutMs || 120000) || 120000,
         expectFinal: body.expectFinal === true
@@ -4221,6 +4693,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, key: m.params.key };
+      delete params.timeoutMs;
       const result = gatewayMethod('sessions.abort', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'sessions.abort', key: m.params.key, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4233,6 +4706,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { ...body, key: m.params.key };
+      delete params.timeoutMs;
       const result = gatewayMethod('sessions.patch', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'sessions.patch', key: m.params.key, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4245,6 +4719,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, key: m.params.key };
+      delete params.timeoutMs;
       const result = gatewayMethod('sessions.reset', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'sessions.reset', key: m.params.key, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4257,6 +4732,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, key: m.params.key };
+      delete params.timeoutMs;
       const result = gatewayMethod('sessions.delete', params, { timeoutMs: Number(body.timeoutMs || 60000) || 60000 });
       return json(res, 200, { ok: true, method: 'sessions.delete', key: m.params.key, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4269,6 +4745,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req).catch(() => ({}));
       const params = { ...body, key: m.params.key };
+      // Upstream accepts `maxLines`; ignore legacy `reason` to avoid schema rejection.
+      if (params.reason !== undefined && params.maxLines === undefined) delete params.reason;
+      delete params.timeoutMs;
       const result = gatewayMethod('sessions.compact', params, { timeoutMs: Number(body.timeoutMs || 120000) || 120000 });
       return json(res, 200, { ok: true, method: 'sessions.compact', key: m.params.key, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4280,8 +4759,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/nodes/pairing')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('node.pair.list', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pair.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pair.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4292,7 +4773,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pairing/request')) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const result = gatewayMethod('node.pair.request', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pair.request', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pair.request', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4303,7 +4786,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pairing/approve')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('node.pair.approve', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pair.approve', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pair.approve', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4314,7 +4799,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pairing/reject')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('node.pair.reject', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pair.reject', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pair.reject', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4325,7 +4812,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pairing/verify')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('node.pair.verify', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pair.verify', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pair.verify', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4336,7 +4825,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pending/drain')) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const result = gatewayMethod('node.pending.drain', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pending.drain', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pending.drain', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4347,7 +4838,9 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pending/enqueue')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('node.pending.enqueue', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pending.enqueue', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pending.enqueue', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4357,8 +4850,8 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   if (route(req, 'POST', '/api/nodes/pending/pull')) {
     try {
-      const body = await parseBody(req);
-      const result = gatewayMethod('node.pending.pull', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const body = await parseBody(req).catch(() => ({}));
+      const result = gatewayMethod('node.pending.pull', {}, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pending.pull', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4369,7 +4862,18 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'POST', '/api/nodes/pending/ack')) {
     try {
       const body = await parseBody(req);
-      const result = gatewayMethod('node.pending.ack', body, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
+      const params = { ...body };
+      if (!Array.isArray(params.ids)) {
+        const legacyId = params.itemId || params.id;
+        if (legacyId !== undefined && legacyId !== null && String(legacyId).trim()) {
+          params.ids = [String(legacyId).trim()];
+        }
+      }
+      delete params.itemId;
+      delete params.id;
+      delete params.nodeId;
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.pending.ack', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.pending.ack', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4380,8 +4884,10 @@ const server = http.createServer(async (req, res) => {
   if (route(req, 'GET', '/api/nodes')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
-      const result = gatewayMethod('node.list', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4392,8 +4898,10 @@ const server = http.createServer(async (req, res) => {
   if ((m = route(req, 'GET', '/api/nodes/:id'))) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
-      const params = normalizeGatewayParams({ ...Object.fromEntries(url.searchParams), nodeId: m.params.id });
-      const result = gatewayMethod('node.describe', params, { timeoutMs: Number(params.timeoutMs || 30000) || 30000 });
+      const queryParams = normalizeGatewayParams({ ...Object.fromEntries(url.searchParams), nodeId: m.params.id });
+      const params = { ...queryParams };
+      delete params.timeoutMs;
+      const result = gatewayMethod('node.describe', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.describe', nodeId: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4406,6 +4914,7 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const params = { nodeId: m.params.id, ...body };
       if (!params.displayName && params.name) params.displayName = params.name;
+      delete params.timeoutMs;
       const result = gatewayMethod('node.rename', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'node.rename', nodeId: m.params.id, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -4418,6 +4927,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { nodeId: m.params.id, ...body };
+      if (!params.idempotencyKey) params.idempotencyKey = crypto.randomUUID();
+      delete params.expectFinal;
+      delete params.invokeTimeout;
       const result = gatewayMethod('node.invoke', params, {
         timeoutMs: Number(body.timeoutMs || body.invokeTimeout || 60000) || 60000,
         expectFinal: body.expectFinal === true
@@ -4433,6 +4945,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { nodeId: m.params.id, ...body };
+      if (params.id === undefined && params.requestId !== undefined) params.id = params.requestId;
+      if (params.payload === undefined && params.result !== undefined) params.payload = params.result;
+      delete params.requestId;
+      delete params.result;
+      delete params.timeoutMs;
       const result = gatewayMethod('node.invoke.result', params, {
         timeoutMs: Number(body.timeoutMs || 30000) || 30000
       });
@@ -4447,6 +4964,16 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = await parseBody(req);
       const params = { nodeId: m.params.id, ...body };
+      if (params.event === undefined && params.type !== undefined) params.event = String(params.type);
+      if (params.payload === undefined) {
+        const payload = { ...body };
+        delete payload.timeoutMs;
+        delete payload.type;
+        delete payload.event;
+        if (Object.keys(payload).length > 0) params.payload = payload;
+      }
+      delete params.type;
+      delete params.timeoutMs;
       const result = gatewayMethod('node.event', params, {
         timeoutMs: Number(body.timeoutMs || 30000) || 30000
       });
@@ -4460,7 +4987,7 @@ const server = http.createServer(async (req, res) => {
   if ((m = route(req, 'POST', '/api/nodes/:id/canvas/capability/refresh'))) {
     try {
       const body = await parseBody(req).catch(() => ({}));
-      const params = { nodeId: m.params.id, ...body };
+      const params = {};
       const result = gatewayMethod('node.canvas.capability.refresh', params, {
         timeoutMs: Number(body.timeoutMs || 30000) || 30000
       });
@@ -4594,14 +5121,18 @@ const server = http.createServer(async (req, res) => {
       const current = isPlainObject(config.skills.entries[skillKey]) ? deepClone(config.skills.entries[skillKey]) : {};
       if (typeof body.enabled === 'boolean') current.enabled = body.enabled;
       if (body.apiKey !== undefined) {
-        if (body.apiKey) current.apiKey = body.apiKey;
+        const normalizedApiKey = normalizeSecretInput(body.apiKey);
+        if (normalizedApiKey) current.apiKey = normalizedApiKey;
         else delete current.apiKey;
       }
       if (isPlainObject(body.env)) {
         const nextEnv = isPlainObject(current.env) ? current.env : {};
         for (const [key, value] of Object.entries(body.env)) {
-          if (!value) delete nextEnv[key];
-          else nextEnv[key] = String(value);
+          const trimmedKey = String(key || '').trim();
+          if (!trimmedKey) continue;
+          const trimmedValue = String(value ?? '').trim();
+          if (!trimmedValue) delete nextEnv[trimmedKey];
+          else nextEnv[trimmedKey] = trimmedValue;
         }
         current.env = nextEnv;
       }
@@ -4819,10 +5350,16 @@ const server = http.createServer(async (req, res) => {
       const defaultAgentId = getDefaultAgentId(config);
       const model = config.agents?.defaults?.model?.primary || null;
       const provider = model ? model.split('/')[0] : null;
-      let hasApiKey = false;
+      let hasCredential = false;
+      let readinessError = 'No provider credential detected for the default agent.';
       if (provider && PROVIDERS[provider]) {
         const p = PROVIDERS[provider];
-        hasApiKey = !!(getEnvValue(p.envKey) || getAuthProfileApiKey(p.authProfileProvider, defaultAgentId));
+        if (p.oauthOnly) {
+          hasCredential = false;
+          readinessError = `Provider '${provider}' uses OAuth for chat/completions and does not satisfy memory embeddings. Configure an embeddings-capable provider API key.`;
+        } else {
+          hasCredential = !!(getEnvValue(p.envKey) || getAuthProfileApiKey(p.authProfileProvider, defaultAgentId));
+        }
       }
 
       return json(res, 200, {
@@ -4830,8 +5367,8 @@ const server = http.createServer(async (req, res) => {
         agentId: defaultAgentId,
         provider,
         embedding: {
-          ok: hasApiKey,
-          error: hasApiKey ? null : 'No provider API key detected for the default agent.'
+          ok: hasCredential,
+          error: hasCredential ? null : readinessError
         },
         note: 'This endpoint provides a management-layer readiness check based on current config and credentials.'
       });
@@ -4989,21 +5526,21 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
-  // POST /api/devices/approve/:deviceId — Approve mot device
+  // POST /api/devices/approve/:deviceId — Approve pending device request via CLI
   // =========================================================================
-  if (route(req, 'POST', '/api/devices/approve/')) {
-    const deviceId = req.url.replace('/api/devices/approve/', '').split('?')[0].trim();
+  if ((m = route(req, 'POST', '/api/devices/approve/:deviceId'))) {
+    const deviceId = (m.params.deviceId || '').trim();
     if (!deviceId) return json(res, 400, { ok: false, error: 'Missing deviceId' });
-    if (!/^[a-f0-9\-]{30,70}$/.test(deviceId)) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(deviceId)) {
       return json(res, 400, { ok: false, error: 'Invalid deviceId format' });
     }
     try {
       const output = openclawExec(`devices approve ${deviceId}`, 15000);
-      return json(res, 200, { ok: true, output });
+      return json(res, 200, { ok: true, deviceId, output });
     } catch (e) {
       const stderr = e.stderr ? e.stderr.toString() : '';
       const stdout = e.stdout ? e.stdout.toString() : '';
-      return json(res, 200, { ok: false, output: stdout || stderr || e.message });
+      return json(res, 200, { ok: false, deviceId, output: stdout || stderr || e.message });
     }
   }
 
@@ -5030,13 +5567,11 @@ const server = http.createServer(async (req, res) => {
         }
       } catch {}
 
-      const configTemplates = [
-        'anthropic', 'openai', 'openai-codex', 'google',
-        'deepseek', 'groq', 'together', 'mistral', 'xai',
-        'cerebras', 'sambanova', 'fireworks', 'cohere',
-        'yi', 'baichuan', 'stepfun', 'siliconflow', 'novita', 'openrouter',
-        'minimax', 'moonshot', 'zhipu'
-      ];
+      const configTemplates = Array.from(new Set(
+        Object.values(PROVIDERS)
+          .map(provider => path.basename(provider.configTemplate || '', '.json'))
+          .filter(Boolean)
+      ));
       const files = [
         { url: `${REPO_RAW}/management-api/server.js`, dest: `${MGMT_API_DIR}/server.js` },
         { url: `${REPO_RAW}/Caddyfile`, dest: `${OPENCLAW_HOME}/Caddyfile` },
@@ -5155,10 +5690,17 @@ const server = http.createServer(async (req, res) => {
       if (!isValidAgentId(agentId)) return json(res, 400, { ok: false, error: 'Invalid agent id' });
 
       const body = await parseBody(req);
-      const { provider, apiKey } = body;
+      const provider = body.provider;
+      const apiKey = normalizeSecretInput(body.apiKey);
 
       const providerConfig = PROVIDERS[provider];
       if (!providerConfig) return json(res, 400, { ok: false, error: 'Invalid provider' });
+      if (providerConfig.oauthOnly) {
+        return json(res, 400, {
+          ok: false,
+          error: `Provider '${provider}' is OAuth-only and does not support manual API keys. Use /api/config/chatgpt-oauth/* endpoints instead.`
+        });
+      }
       if (!apiKey) return json(res, 400, { ok: false, error: 'Missing apiKey' });
 
       // Validate agent exists (main always exists)
@@ -5288,7 +5830,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
-      const content = fs.readFileSync(resolved.filePath, 'utf8');
+      const content = fs.readFileSync(resolved.ioPath, 'utf8');
       return json(res, 200, {
         ok: true,
         agentId,
@@ -5365,9 +5907,16 @@ const server = http.createServer(async (req, res) => {
       for (const field of updatable) {
         if (body[field] !== undefined) {
           if (body[field] === null) delete agent[field];
-          else agent[field] = body[field];
+          else if ((field === 'workspace' || field === 'agentDir') && typeof body[field] === 'string') {
+            agent[field] = normalizeManagedPath(body[field]);
+          } else {
+            agent[field] = body[field];
+          }
         }
       }
+
+      if (agent.workspace) fs.mkdirSync(normalizeManagedPath(agent.workspace), { recursive: true });
+      if (agent.agentDir) fs.mkdirSync(normalizeManagedPath(agent.agentDir), { recursive: true });
 
       config.agents.list[agentIdx] = agent;
       writeConfig(config);
@@ -5388,6 +5937,10 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req).catch(() => ({}));
       const config = readConfig();
       ensureAgentsList(config);
+      const agent = getAgentById(config, agentId);
+      const workspaceDir = agent?.workspace
+        ? normalizeManagedPath(agent.workspace)
+        : normalizeManagedPath(`~/.openclaw/workspace-${agentId}`);
 
       const list = config.agents.list;
       if (list.length <= 1)
@@ -5409,15 +5962,30 @@ const server = http.createServer(async (req, res) => {
 
       writeConfig(config);
 
-      // Delete data only if explicitly requested
-      if (body.deleteData === true) {
-        const agentDir = `${CONFIG_DIR}/agents/${agentId}`;
-        if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true, force: true });
+      const deleteData = body.deleteData !== false;
+      const removedPaths = [];
+
+      if (deleteData) {
+        const configuredAgentDir = normalizeManagedPath(agent?.agentDir || `~/.openclaw/agents/${agentId}/agent`);
+        const managedAgentDir = normalizeManagedPath(`~/.openclaw/agents/${agentId}/agent`);
+        const managedSessionsDir = normalizeManagedPath(`~/.openclaw/agents/${agentId}/sessions`);
+        const cleanupTargets = [...new Set([
+          workspaceDir,
+          configuredAgentDir,
+          managedAgentDir,
+          managedSessionsDir
+        ].filter(Boolean))];
+
+        for (const targetPath of cleanupTargets) {
+          if (!fs.existsSync(targetPath)) continue;
+          fs.rmSync(targetPath, { recursive: true, force: true });
+          removedPaths.push(targetPath);
+        }
       }
 
       restartManagedService('openclaw');
 
-      return json(res, 200, { ok: true, id: agentId, removed: true });
+      return json(res, 200, { ok: true, id: agentId, removed: true, deleteData, removedPaths });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -5480,8 +6048,11 @@ const server = http.createServer(async (req, res) => {
       if (name) newAgent.name = name;
       if (model) newAgent.model = model;
       if (body.default) newAgent.default = true;
-      newAgent.workspace = body.workspace || `~/.openclaw/workspace-${id}`;
-      newAgent.agentDir = body.agentDir || `~/.openclaw/agents/${id}/agent`;
+      newAgent.workspace = normalizeManagedPath(body.workspace || `~/.openclaw/workspace-${id}`);
+      newAgent.agentDir = normalizeManagedPath(body.agentDir || `~/.openclaw/agents/${id}/agent`);
+
+      fs.mkdirSync(newAgent.workspace, { recursive: true });
+      fs.mkdirSync(newAgent.agentDir, { recursive: true });
 
       config.agents.list.push(newAgent);
 
@@ -5631,7 +6202,7 @@ const server = http.createServer(async (req, res) => {
         oauthUrl,
         models: codexModels,
         defaultModel: codexModels.find(m => m.default)?.id || codexModels[0].id,
-        instructions: 'Open oauthUrl in browser. After login, copy the full redirect URL (localhost:1455/auth/callback?code=...) and POST to /api/config/chatgpt-oauth/complete with { sessionId, redirectUrl, model? }',
+        instructions: 'Open oauthUrl in browser. After login, either copy the full redirect URL (localhost:1455/auth/callback?code=...&state=...) or extract code#state, then POST to /api/config/chatgpt-oauth/complete with { sessionId, redirectUrl, model? }',
         sessionExpiresIn: OAUTH_SESSION_TTL / 1000
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
@@ -5640,7 +6211,7 @@ const server = http.createServer(async (req, res) => {
   // =========================================================================
   // POST /api/config/chatgpt-oauth/complete — Hoan thanh OAuth, luu tokens
   // Body: { sessionId, redirectUrl, model?, switchProvider? }
-  // redirectUrl: full localhost:1455/auth/callback?code=...&state=... URL
+  // redirectUrl: full localhost:1455/auth/callback?code=...&state=... URL or "code#state"
   // =========================================================================
   if (route(req, 'POST', '/api/config/chatgpt-oauth/complete')) {
     try {
@@ -5654,22 +6225,38 @@ const server = http.createServer(async (req, res) => {
       const session = _oauthSessions[sessionId];
       if (!session) return json(res, 400, { ok: false, error: 'Session not found or expired. Call /start again.' });
 
-      // Parse authorization code (flexible: full URL, code=... query, or raw code)
+      // Parse authorization code and state from callback URL or "code#state" input.
       let code, returnedState;
       const trimmed = redirectUrl.trim();
-      try {
-        // Try full URL first
-        const u = new URL(trimmed.startsWith('http') ? trimmed : 'http://localhost/?' + trimmed);
-        code = u.searchParams.get('code') || undefined;
-        returnedState = u.searchParams.get('state') || undefined;
-      } catch {
-        // Fallback: raw code
-        code = trimmed.includes('#') ? trimmed.split('#')[0] : trimmed;
+      const compactCodeState = /^([^#\s]+)#([^#\s]+)$/.exec(trimmed);
+      if (compactCodeState && !trimmed.includes('://')) {
+        code = compactCodeState[1];
+        returnedState = compactCodeState[2];
+      } else {
+        try {
+          const parsed = new URL(trimmed);
+          code = parsed.searchParams.get('code') || undefined;
+          returnedState = parsed.searchParams.get('state') || undefined;
+          if (!code || !returnedState) {
+            const hash = parsed.hash.startsWith('#') ? parsed.hash.slice(1) : '';
+            if (hash) {
+              const hashParams = new URLSearchParams(hash);
+              code = code || hashParams.get('code') || undefined;
+              returnedState = returnedState || hashParams.get('state') || undefined;
+            }
+          }
+        } catch {
+          return json(res, 400, { ok: false, error: 'Invalid redirectUrl. Provide full callback URL or "code#state".' });
+        }
       }
       if (!code) return json(res, 400, { ok: false, error: 'No "code" found in redirectUrl' });
+      if (!returnedState) {
+        delete _oauthSessions[sessionId];
+        return json(res, 400, { ok: false, error: 'Missing "state" in redirectUrl. Restart OAuth and submit the full callback URL.' });
+      }
 
-      // Validate state if present
-      if (returnedState && returnedState !== session.state) {
+      // Validate state (required)
+      if (returnedState !== session.state) {
         delete _oauthSessions[sessionId];
         return json(res, 400, { ok: false, error: 'State mismatch — possible CSRF. Start a new session.' });
       }
@@ -5704,13 +6291,9 @@ const server = http.createServer(async (req, res) => {
           const finalModel = body.model || 'openai-codex/gpt-5.4';
           let config;
           try { config = readConfig(); } catch { config = {}; }
-          if (!config.agents) config.agents = { defaults: { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } } };
-          if (!config.agents.defaults) config.agents.defaults = { model: {}, maxConcurrent: 4, subagents: { maxConcurrent: 8 } };
-          if (!config.agents.defaults.model) config.agents.defaults.model = {};
-          config.agents.defaults.model.primary = finalModel;
+          switchedModel = applyBuiltInProviderTemplate(config, 'openai-codex', finalModel);
           writeConfig(config);
           restartService(OPENCLAW_SERVICE);
-          switchedModel = finalModel;
         } catch (e) {
           return json(res, 200, { ok: true, agentId: session.agentId, tokensStored: true, profileKey: stored.profileKey, accountId: stored.accountId, switchedProvider: false, switchError: e.message });
         }
