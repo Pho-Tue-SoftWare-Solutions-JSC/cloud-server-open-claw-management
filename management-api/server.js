@@ -457,6 +457,153 @@ function buildAcmeDiagnostics(logLines = []) {
   };
 }
 
+function buildAcmeAssessment({ preflight = null, liveChecks = null, diagnostics = null, sslState = null } = {}) {
+  const issues = [];
+  const suggestedActions = [];
+  const seenCodes = new Set();
+
+  const addIssue = (code, message, severity = 'warning') => {
+    if (!code || seenCodes.has(code)) return;
+    seenCodes.add(code);
+    issues.push({ code, severity, message });
+  };
+
+  const addActions = (items = []) => {
+    for (const item of items) {
+      if (item && !suggestedActions.includes(item)) suggestedActions.push(item);
+    }
+  };
+
+  const httpProbeServer = String(liveChecks?.httpProbe?.server || '').trim().toLowerCase();
+  const httpsProbeServer = String(liveChecks?.httpsProbe?.server || '').trim().toLowerCase();
+  const diagnosticsByCode = new Set((diagnostics?.findings || []).map(item => item.code));
+
+  if (preflight && !preflight.requestedDomain) {
+    addIssue('missing_domain', 'Domain is required before ACME validation can run.', 'error');
+    addActions(['Provide a public lowercase FQDN before requesting ACME SSL.']);
+  }
+
+  if (preflight && preflight.requestedDomain && !preflight.domainValid) {
+    addIssue('invalid_domain', 'The supplied domain is not a valid public lowercase FQDN.', 'error');
+    addActions(['Use a public lowercase FQDN without protocol, port, or IP address.']);
+  }
+
+  if (preflight && !preflight.emailValid) {
+    addIssue('email_issue', 'The ACME email is invalid.', 'error');
+    addActions(['Provide a valid ACME contact email or clear the field before retrying.']);
+  }
+
+  if ((preflight && preflight.domainValid && !preflight.dnsResolved) || diagnosticsByCode.has('dns_resolution_failed')) {
+    addIssue('dns_issue', 'The domain does not currently resolve correctly for ACME validation.', 'error');
+  }
+
+  if (preflight && preflight.domainValid && preflight.dnsResolved && !preflight.dnsMatchesServer) {
+    addIssue('dns_issue', `The domain A record does not point to this server (${preflight.serverIP}).`, 'error');
+  }
+
+  if (liveChecks && (!liveChecks.localPort80Listening || !liveChecks.localPort443Listening)) {
+    addIssue('service_listener_issue', 'Caddy is not listening on local ports 80 and/or 443.', 'error');
+  }
+
+  if (liveChecks && (!liveChecks.publicPort80Reachable || !liveChecks.publicPort443Reachable)) {
+    addIssue('firewall_issue', 'Public traffic cannot reach ports 80 and/or 443 on the domain.', 'error');
+  }
+
+  if (diagnosticsByCode.has('rate_limited')) {
+    addIssue('rate_limited', 'The ACME issuer is currently rate limiting certificate issuance.', 'warning');
+  }
+
+  if (diagnosticsByCode.has('caa_restricted')) {
+    addIssue('caa_issue', 'DNS CAA records may be blocking the configured ACME issuer.', 'error');
+  }
+
+  if (diagnosticsByCode.has('network_timeout')) {
+    addIssue('network_issue', 'ACME validation is timing out before completing.', 'error');
+  }
+
+  if (diagnosticsByCode.has('connection_refused')) {
+    addIssue('firewall_issue', 'ACME validation received a connection refusal from the server.', 'error');
+  }
+
+  if (diagnosticsByCode.has('tls_alpn_challenge')) {
+    addIssue('tls_challenge_issue', 'TLS-ALPN validation is failing on port 443.', 'error');
+  }
+
+  if (diagnosticsByCode.has('http_challenge')) {
+    addIssue('http_challenge_issue', 'HTTP-01 validation is failing on port 80.', 'error');
+  }
+
+  if (
+    liveChecks
+    && liveChecks.publicPort80Reachable
+    && liveChecks.httpProbe?.ok
+    && httpProbeServer
+    && !httpProbeServer.includes('caddy')
+  ) {
+    addIssue('reverse_proxy_conflict', `Port 80 appears to be handled by ${liveChecks.httpProbe.server} instead of Caddy.`, 'error');
+  }
+
+  if (
+    liveChecks
+    && liveChecks.publicPort443Reachable
+    && liveChecks.httpsProbe?.ok
+    && httpsProbeServer
+    && !httpsProbeServer.includes('caddy')
+  ) {
+    addIssue('reverse_proxy_conflict', `Port 443 appears to be handled by ${liveChecks.httpsProbe.server} instead of Caddy.`, 'error');
+  }
+
+  if (
+    diagnosticsByCode.has('challenge_unauthorized')
+    && liveChecks
+    && liveChecks.publicPort80Reachable
+    && liveChecks.httpProbe?.ok
+  ) {
+    addIssue('reverse_proxy_conflict', 'ACME challenge responses are being served unexpectedly, likely by another proxy or app.', 'error');
+  }
+
+  if (sslState && sslState.sslFallbackUsed) {
+    addIssue('fallback_active', 'ZeroSSL fallback is currently serving the certificate.', 'info');
+  }
+
+  addActions(diagnostics?.suggestedActions || []);
+  addActions(liveChecks?.warnings || []);
+  addActions(preflight?.warnings || []);
+
+  let status = 'ok';
+  let primaryCategory = 'ready';
+  let summary = 'ACME validation looks healthy.';
+
+  const errorIssue = issues.find(issue => issue.severity === 'error');
+  const warningIssue = issues.find(issue => issue.severity === 'warning');
+  const infoIssue = issues.find(issue => issue.severity === 'info');
+
+  if (errorIssue) {
+    status = 'attention';
+    primaryCategory = errorIssue.code;
+    summary = errorIssue.message;
+  } else if (warningIssue) {
+    status = 'attention';
+    primaryCategory = warningIssue.code;
+    summary = warningIssue.message;
+  } else if (infoIssue) {
+    primaryCategory = infoIssue.code;
+    summary = infoIssue.message;
+  } else if (diagnostics?.status === 'attention') {
+    status = 'attention';
+    primaryCategory = 'acme_attention';
+    summary = diagnostics.summary || 'ACME needs attention.';
+  }
+
+  return {
+    status,
+    primaryCategory,
+    summary,
+    issues,
+    suggestedActions
+  };
+}
+
 function checkTcpPort(host, port, timeoutMs = 5000) {
   return new Promise(resolve => {
     let settled = false;
@@ -2699,6 +2846,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const preflight = buildAcmePreflight(m.query.domain, Object.prototype.hasOwnProperty.call(m.query, 'email') ? m.query.email : undefined);
       const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
+      const acmeDiagnostics = buildAcmeDiagnostics(recentCaddyAcmeLogs);
       if (!preflight.requestedDomain) {
         return json(res, 400, { ok: false, error: 'Missing domain' });
       }
@@ -2707,7 +2855,8 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         ...preflight,
         recentCaddyAcmeLogs,
-        acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
+        acmeDiagnostics,
+        acmeAssessment: buildAcmeAssessment({ preflight, diagnostics: acmeDiagnostics })
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2724,6 +2873,7 @@ const server = http.createServer(async (req, res) => {
 
       const liveChecks = await buildAcmeLiveConnectivity(preflight.domain || preflight.requestedDomain);
       const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
+      const acmeDiagnostics = buildAcmeDiagnostics(recentCaddyAcmeLogs);
 
       return json(res, 200, {
         ok: true,
@@ -2731,7 +2881,8 @@ const server = http.createServer(async (req, res) => {
         liveReady: !!(preflight.ready && liveChecks.ready),
         liveChecks,
         recentCaddyAcmeLogs,
-        acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
+        acmeDiagnostics,
+        acmeAssessment: buildAcmeAssessment({ preflight, liveChecks, diagnostics: acmeDiagnostics })
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2747,6 +2898,8 @@ const server = http.createServer(async (req, res) => {
       const domain = rawDomain && !isIP && rawDomain !== 'localhost' ? rawDomain : null;
       const sslState = buildSslIssuerState(domain, caddyTls);
       const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
+      const acmeDiagnostics = buildAcmeDiagnostics(recentCaddyAcmeLogs);
+      const preflight = domain ? buildAcmePreflight(domain, undefined) : null;
 
       return json(res, 200, {
         ok: true,
@@ -2757,7 +2910,8 @@ const server = http.createServer(async (req, res) => {
         sslIssuerHint: sslState.sslIssuerHint,
         sslFallbackUsed: sslState.sslFallbackUsed,
         recentCaddyAcmeLogs,
-        acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
+        acmeDiagnostics,
+        acmeAssessment: buildAcmeAssessment({ preflight, diagnostics: acmeDiagnostics, sslState })
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2808,6 +2962,8 @@ const server = http.createServer(async (req, res) => {
           const issuerInfo = waitForCertificateIssuerInfo(domain, 5, 3000);
           const sslState = buildSslIssuerState(domain, '', issuerInfo);
           const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
+          const acmeDiagnostics = buildAcmeDiagnostics(recentCaddyAcmeLogs);
+          const resultPreflight = buildAcmePreflight(domain, getAcmeEmail() || undefined);
           if (issuerInfo) {
             console.log(`[Caddy] Certificate issuer for ${domain}: ${issuerInfo.provider} (${issuerInfo.issuer || 'unknown issuer'})`);
             if (sslState.sslFallbackUsed) {
@@ -2826,7 +2982,8 @@ const server = http.createServer(async (req, res) => {
             sslIssuerHint: sslState.sslIssuerHint,
             sslFallbackUsed: sslState.sslFallbackUsed,
             recentCaddyAcmeLogs,
-            acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
+            acmeDiagnostics,
+            acmeAssessment: buildAcmeAssessment({ preflight: resultPreflight, diagnostics: acmeDiagnostics, sslState })
           });
         }
       } catch {}

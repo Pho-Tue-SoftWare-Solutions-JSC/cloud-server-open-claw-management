@@ -270,6 +270,13 @@ Check whether a domain is ready for ACME issuance before calling `PUT /api/domai
     "findings": [],
     "suggestedActions": []
   },
+  "acmeAssessment": {
+    "status": "ok",
+    "primaryCategory": "ready",
+    "summary": "ACME validation looks healthy.",
+    "issues": [],
+    "suggestedActions": []
+  },
   "recentCaddyAcmeLogs": [
     "... obtaining certificate ..."
   ]
@@ -284,6 +291,7 @@ Check whether a domain is ready for ACME issuance before calling `PUT /api/domai
 | `issuerOrder` | Ordered ACME issuers used by Caddy (`letsencrypt` then `zerossl`) |
 | `warnings` | Human-readable validation findings |
 | `acmeDiagnostics` | Parsed hints based on recent ACME-related Caddy logs |
+| `acmeAssessment` | Higher-level issue classification such as `dns_issue`, `firewall_issue`, or `ready` |
 
 **Example:**
 
@@ -342,6 +350,13 @@ Run live connectivity checks for ACME-related access after the standard prefligh
     "summary": "No known ACME failure signature was detected in recent Caddy logs.",
     "findings": [],
     "suggestedActions": []
+  },
+  "acmeAssessment": {
+    "status": "ok",
+    "primaryCategory": "ready",
+    "summary": "ACME validation looks healthy.",
+    "issues": [],
+    "suggestedActions": []
   }
 }
 ```
@@ -355,6 +370,7 @@ Run live connectivity checks for ACME-related access after the standard prefligh
 | `liveChecks.publicPort443Reachable` | Whether the domain accepts TCP connections on port `443` |
 | `liveChecks.httpProbe` | HTTP probe result for an ACME challenge-like path |
 | `liveChecks.httpsProbe` | HTTPS probe result for the domain root |
+| `acmeAssessment.primaryCategory` | Top-level classification of the most important ACME issue or `ready` |
 
 **Example:**
 
@@ -393,6 +409,21 @@ Get the live SSL issuer state plus recent ACME-related Caddy log lines.
       {
         "code": "zerossl_fallback_active",
         "message": "ZeroSSL appears in recent ACME activity and may be serving as fallback."
+      }
+    ],
+    "suggestedActions": [
+      "No action required if issuance succeeded; this indicates Let's Encrypt likely fell back to ZeroSSL."
+    ]
+  },
+  "acmeAssessment": {
+    "status": "ok",
+    "primaryCategory": "fallback_active",
+    "summary": "ZeroSSL fallback is currently serving the certificate.",
+    "issues": [
+      {
+        "code": "fallback_active",
+        "severity": "info",
+        "message": "ZeroSSL fallback is currently serving the certificate."
       }
     ],
     "suggestedActions": [
@@ -455,6 +486,13 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
     "status": "ok",
     "summary": "No known ACME failure signature was detected in recent Caddy logs.",
     "findings": [],
+    "suggestedActions": []
+  },
+  "acmeAssessment": {
+    "status": "ok",
+    "primaryCategory": "ready",
+    "summary": "ACME validation looks healthy.",
+    "issues": [],
     "suggestedActions": []
   },
   "recentCaddyAcmeLogs": [

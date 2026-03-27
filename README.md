@@ -153,9 +153,9 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 | `GET`  | `/api/system`    | CPU, RAM, disk, versions                   |
 | `GET`  | `/api/logs`      | Logs (`?lines=100&service=openclaw`)       |
 | `GET`  | `/api/domain`    | Domain + SSL info, ACME email, issuer      |
-| `GET`  | `/api/domain/preflight` | ACME readiness check + diagnostic hints |
-| `GET`  | `/api/domain/preflight/live` | Live port 80/443 and HTTP/HTTPS reachability |
-| `GET`  | `/api/domain/issuer` | Live SSL issuer state + ACME diagnostics |
+| `GET`  | `/api/domain/preflight` | ACME readiness check + diagnostic hints + issue classification |
+| `GET`  | `/api/domain/preflight/live` | Live port 80/443 and HTTP/HTTPS reachability + issue classification |
+| `GET`  | `/api/domain/issuer` | Live SSL issuer state + ACME diagnostics + issue classification |
 
 ### Service Control
 

@@ -134,7 +134,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/prefli
 
 This returns DNS readiness, optional email validation, current issuer info, recent ACME-related Caddy log lines, and parsed diagnostic hints.
 
-If ACME is failing, check `acmeDiagnostics.findings` and `acmeDiagnostics.suggestedActions` first.
+If ACME is failing, check `acmeAssessment.primaryCategory` first, then review `acmeDiagnostics.findings` and `acmeDiagnostics.suggestedActions`.
 
 ### Live preflight check for ports 80/443
 
