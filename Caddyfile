@@ -1,4 +1,5 @@
 {
+    {$CADDY_ACME_EMAIL_DIRECTIVE}
     cert_issuer acme {
         dir https://acme-v02.api.letsencrypt.org/directory
     }

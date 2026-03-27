@@ -118,6 +118,14 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain
 ```
 
+### View current SSL issuer state
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain/issuer
+```
+
+Use this to quickly confirm whether Caddy is currently serving a Let's Encrypt certificate or has switched to ZeroSSL fallback.
+
 ### Change domain (auto-provision ACME SSL: Let's Encrypt, fallback ZeroSSL)
 
 **Requirement:** Domain must already have an A record pointing to the VPS IP.
@@ -126,7 +134,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain
 curl -X PUT \
   -H "Authorization: Bearer $MGMT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"domain": "openclaw.example.com"}' \
+  -d '{"domain": "openclaw.example.com", "email": "admin@example.com"}' \
   http://$VPS_IP:9998/api/domain
 ```
 
@@ -152,6 +160,7 @@ Edit `/opt/openclaw/Caddyfile`:
 **With domain:**
 ```
 {
+  email admin@example.com
   cert_issuer acme {
     dir https://acme-v02.api.letsencrypt.org/directory
   }

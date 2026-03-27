@@ -50,7 +50,7 @@
               "_postman_previewlanguage": "Text",
               "header": [],
               "cookie": [],
-              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ip\": \"1.2.3.4\",\n  \"dashboardUrl\": \"http://openclaw.example.com:9998/pair?token=abc123...\",\n  \"gatewayToken\": \"abc123...\",\n  \"mgmtApiKey\": \"abcd1234...wxyz\",\n  \"status\": \"running\",\n  \"version\": \"latest\",\n  \"mgmtVersion\": \"4.0.0\",\n  \"latestMgmtVersion\": \"4.0.1\",\n  \"mgmtUpdateAvailable\": true,\n  \"ssl\": \"acme\",\n  \"dnsStatus\": \"ok\"\n}"
+              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ip\": \"1.2.3.4\",\n  \"dashboardUrl\": \"http://openclaw.example.com:9998/pair?token=abc123...\",\n  \"gatewayToken\": \"abc123...\",\n  \"mgmtApiKey\": \"abcd1234...wxyz\",\n  \"status\": \"running\",\n  \"version\": \"latest\",\n  \"mgmtVersion\": \"4.0.0\",\n  \"latestMgmtVersion\": \"4.0.1\",\n  \"mgmtUpdateAvailable\": true,\n  \"ssl\": \"acme\",\n  \"acmeEmail\": \"admin@example.com\",\n  \"sslIssuer\": \"letsencrypt\",\n  \"dnsStatus\": \"ok\"\n}"
             }
           ]
         },
@@ -466,7 +466,53 @@
               "_postman_previewlanguage": "Text",
               "header": [],
               "cookie": [],
-              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ip\": \"1.2.3.4\",\n  \"ssl\": true,\n  \"selfSignedSSL\": false\n}"
+              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ip\": \"1.2.3.4\",\n  \"ssl\": true,\n  \"selfSignedSSL\": false,\n  \"acmeEmail\": \"admin@example.com\",\n  \"sslIssuer\": \"letsencrypt\",\n  \"sslIssuerHint\": \"Using Let's Encrypt as the primary ACME issuer.\",\n  \"sslFallbackUsed\": false\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Domain Issuer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/domain/issuer",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "domain",
+                "issuer"
+              ]
+            },
+            "description": "Get the live SSL issuer state and recent ACME-related Caddy logs."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/domain/issuer",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "domain",
+                    "issuer"
+                  ]
+                },
+                "description": "Get the live SSL issuer state and recent ACME-related Caddy logs."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"ssl\": \"acme\",\n  \"sslIssuer\": \"zerossl\",\n  \"sslIssuerHint\": \"Using ZeroSSL as the ACME fallback issuer.\",\n  \"sslFallbackUsed\": true,\n  \"recentCaddyAcmeLogs\": [\n    \"... obtaining certificate ...\",\n    \"... issuer=acme.zerossl.com-v2-DV90 ...\"\n  ]\n}"
             }
           ]
         },
@@ -528,7 +574,7 @@
               "_postman_previewlanguage": "Text",
               "header": [],
               "cookie": [],
-              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\"\n}"
+              "body": "{\n  \"ok\": true,\n  \"domain\": \"openclaw.example.com\",\n  \"acmeEmail\": \"admin@example.com\",\n  \"sslIssuer\": \"letsencrypt\",\n  \"sslIssuerHint\": \"Using Let's Encrypt as the primary ACME issuer.\",\n  \"sslFallbackUsed\": false,\n  \"recentCaddyAcmeLogs\": [\n    \"... obtaining certificate ...\"\n  ]\n}"
             },
             {
               "name": "DNS Error",

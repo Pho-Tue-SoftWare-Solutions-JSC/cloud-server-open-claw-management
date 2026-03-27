@@ -11,6 +11,7 @@
   - [GET /api/system](#get-apisystem)
 - [Domain & SSL](#domain--ssl)
   - [GET /api/domain](#get-apidomain)
+  - [GET /api/domain/issuer](#get-apidomainissuer)
   - [PUT /api/domain](#put-apidomain)
 - [Version](#version)
   - [GET /api/version](#get-apiversion)
@@ -196,19 +197,73 @@ View current domain and SSL status.
   "ip": "180.93.138.155",
   "ssl": true,
   "selfSignedSSL": false,
+  "acmeEmail": "admin@example.com",
+  "sslIssuer": "letsencrypt",
+  "sslIssuerHint": "Using Let's Encrypt as the primary ACME issuer.",
+  "sslFallbackUsed": false,
+  "sslIssuerDetails": {
+    "host": "openclaw.example.com",
+    "issuer": "issuer=C = US, O = Let's Encrypt, CN = R11",
+    "subject": "subject=CN = openclaw.example.com",
+    "notBefore": "notBefore=Mar 26 00:00:00 2026 GMT",
+    "notAfter": "notAfter=Jun 24 23:59:59 2026 GMT",
+    "provider": "letsencrypt"
+  },
   "caddyfile": "{\n    cert_issuer acme {\n        dir https://acme-v02.api.letsencrypt.org/directory\n    }\n    cert_issuer acme {\n        dir https://acme.zerossl.com/v2/DV90\n    }\n}\n\nopenclaw.example.com {\n    reverse_proxy 127.0.0.1:18789\n}"
 }
 ```
 
-| Field           | Description                                     |
-|-----------------|-------------------------------------------------|
-| `ssl`           | `true` if public ACME SSL is enabled            |
-| `selfSignedSSL` | `true` if using self-signed cert (IP only)      |
+| Field              | Description                                                |
+|--------------------|------------------------------------------------------------|
+| `ssl`              | `true` if public ACME SSL is enabled                       |
+| `selfSignedSSL`    | `true` if using self-signed cert (IP only)                 |
+| `acmeEmail`        | Current ACME registration email, if configured             |
+| `sslIssuer`        | Detected issuer hint: `letsencrypt`, `zerossl`, or `null`  |
+| `sslIssuerHint`    | Human-readable summary of the current issuer state         |
+| `sslFallbackUsed`  | `true` when ZeroSSL fallback is currently being used       |
+| `sslIssuerDetails` | Raw issuer/subject/date metadata read from the live cert   |
 
 **Example:**
 
 ```bash
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain
+```
+
+---
+
+### GET /api/domain/issuer
+
+Get the live SSL issuer state plus recent ACME-related Caddy log lines.
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "domain": "openclaw.example.com",
+  "ssl": "acme",
+  "sslIssuer": "zerossl",
+  "sslIssuerHint": "Using ZeroSSL as the ACME fallback issuer.",
+  "sslFallbackUsed": true,
+  "sslIssuerDetails": {
+    "host": "openclaw.example.com",
+    "issuer": "issuer=O = ZeroSSL, CN = ZeroSSL RSA Domain Secure Site CA",
+    "subject": "subject=CN = openclaw.example.com",
+    "notBefore": "notBefore=Mar 26 00:00:00 2026 GMT",
+    "notAfter": "notAfter=Jun 24 23:59:59 2026 GMT",
+    "provider": "zerossl"
+  },
+  "recentCaddyAcmeLogs": [
+    "... obtaining certificate ...",
+    "... issuer=acme.zerossl.com-v2-DV90 ..."
+  ]
+}
+```
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/domain/issuer
 ```
 
 ---
@@ -236,7 +291,22 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
 ```json
 {
   "ok": true,
-  "domain": "openclaw.example.com"
+  "domain": "openclaw.example.com",
+  "acmeEmail": "admin@example.com",
+  "sslIssuer": "letsencrypt",
+  "sslIssuerHint": "Using Let's Encrypt as the primary ACME issuer.",
+  "sslFallbackUsed": false,
+  "sslIssuerDetails": {
+    "host": "openclaw.example.com",
+    "issuer": "issuer=C = US, O = Let's Encrypt, CN = R11",
+    "subject": "subject=CN = openclaw.example.com",
+    "notBefore": "notBefore=Mar 26 00:00:00 2026 GMT",
+    "notAfter": "notAfter=Jun 24 23:59:59 2026 GMT",
+    "provider": "letsencrypt"
+  },
+  "recentCaddyAcmeLogs": [
+    "... obtaining certificate ..."
+  ]
 }
 ```
 
@@ -256,7 +326,7 @@ Change the domain and auto-configure ACME SSL (Let's Encrypt, fallback ZeroSSL).
 ```bash
 curl -X PUT -H "Authorization: Bearer $MGMT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"domain": "openclaw.example.com"}' \
+  -d '{"domain": "openclaw.example.com", "email": "admin@example.com"}' \
   http://$VPS_IP:9998/api/domain
 ```
 

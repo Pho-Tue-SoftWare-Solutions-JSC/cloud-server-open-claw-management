@@ -5,11 +5,12 @@ set -euo pipefail
 # OpenClaw - Script cai dat all-in-one (Bare-metal, None Docker)
 #
 # Usage:
-#   curl -fsSL <url>/install.sh | bash -s -- --mgmt-key <KEY> --domain <DOMAIN>
-#   bash install.sh --mgmt-key <KEY> --domain <DOMAIN>
+#   curl -fsSL <url>/install.sh | bash -s -- --mgmt-key <KEY> --domain <DOMAIN> [--email <EMAIL>]
+#   bash install.sh --mgmt-key <KEY> --domain <DOMAIN> [--email <EMAIL>]
 #
 # --mgmt-key  MGMT API key tu HostBill (neu khong truyen se tu sinh)
 # --domain    Ten mien da tro DNS ve VPS (neu co se cau hinh SSL ACME: Let's Encrypt, fallback ZeroSSL)
+# --email     Email dang ky ACME/nhan thong bao SSL (tuy chon)
 # =============================================================================
 
 APP_VERSION="latest"
@@ -22,10 +23,12 @@ LOG_FILE="/var/log/openclaw-install.log"
 # --- Parse arguments ---
 MGMT_API_KEY_ARG=""
 DOMAIN_ARG=""
+ACME_EMAIL_ARG=""
 while [[ $# -gt 0 ]]; do
     case $1 in
         --mgmt-key) MGMT_API_KEY_ARG="$2"; shift 2 ;;
         --domain) DOMAIN_ARG="$2"; shift 2 ;;
+        --email) ACME_EMAIL_ARG="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
@@ -266,6 +269,13 @@ else
     CADDY_TLS_VALUE=""
 fi
 
+ACME_EMAIL_VALUE="${ACME_EMAIL_ARG}"
+if [ -n "${ACME_EMAIL_VALUE}" ]; then
+  CADDY_ACME_EMAIL_DIRECTIVE_VALUE="email ${ACME_EMAIL_VALUE}"
+else
+  CADDY_ACME_EMAIL_DIRECTIVE_VALUE="# email not configured"
+fi
+
 cat > ${INSTALL_DIR}/.env << EOF
 # OpenClaw Environment Configuration
 # Sau khi thay doi, restart: systemctl restart openclaw
@@ -280,6 +290,8 @@ OPENCLAW_GATEWAY_TOKEN=${GATEWAY_TOKEN}
 # Domain & TLS (Caddy - ACME: Let's Encrypt, fallback ZeroSSL)
 DOMAIN=${CADDY_DOMAIN}
 CADDY_TLS=${CADDY_TLS_VALUE}
+ACME_EMAIL=${ACME_EMAIL_VALUE}
+CADDY_ACME_EMAIL_DIRECTIVE=${CADDY_ACME_EMAIL_DIRECTIVE_VALUE}
 
 # Management API
 OPENCLAW_MGMT_API_KEY=${MGMT_API_KEY}

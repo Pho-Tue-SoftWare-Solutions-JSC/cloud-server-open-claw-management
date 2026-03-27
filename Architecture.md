@@ -71,7 +71,7 @@ Internet
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main/install.sh | \
-  bash -s -- --domain <DOMAIN> [--mgmt-key <KEY>]
+  bash -s -- --domain <DOMAIN> [--email <EMAIL>] [--mgmt-key <KEY>]
 ```
 
 Install process:
@@ -159,10 +159,10 @@ systemctl restart openclaw-mgmt
 
 ```bash
 curl -X PUT -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/json" \
-  -d '{"domain":"new.example.com"}' \
+  -d '{"domain":"new.example.com","email":"admin@example.com"}' \
   http://localhost:9998/api/domain
 ```
-Caddy will auto-provision ACME SSL (Let's Encrypt, fallback ZeroSSL). If DNS not set correctly, it will use a self-signed cert.
+Caddy will auto-provision ACME SSL (Let's Encrypt, fallback ZeroSSL). If provided, the email is used for ACME registration and notices. If DNS not set correctly, it will use a self-signed cert.
 
 ### Change Model / Provider
 
@@ -281,12 +281,13 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system
 
 | Method | Path            | Description                              |
 |--------|-----------------|------------------------------------------|
-| `GET`  | `/api/info`     | Domain, IP, token, status, version       |
+| `GET`  | `/api/info`     | Domain, IP, token, status, version, issuer state |
 | `GET`  | `/api/status`   | OpenClaw + caddy status                  |
 | `GET`  | `/api/version`  | OpenClaw version                         |
 | `GET`  | `/api/system`   | RAM, CPU, disk, versions                 |
 | `GET`  | `/api/logs`     | Logs (query: `?lines=100&service=openclaw`) |
-| `GET`  | `/api/domain`   | Domain + SSL info                        |
+| `GET`  | `/api/domain`   | Domain + SSL info, ACME email, issuer   |
+| `GET`  | `/api/domain/issuer` | Live SSL issuer state + recent Caddy ACME logs |
 
 **Service Control**
 
@@ -299,7 +300,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system
 | `POST` | `/api/reset`            | Wipe data, start fresh (needs `{"confirm":"RESET"}`) |
 | `POST` | `/api/upgrade`          | `npm update -g openclaw` + restart          |
 | `POST` | `/api/self-update`      | Update Management API from GitHub           |
-| `PUT`  | `/api/domain`           | Change domain (Caddy will provision SSL)    |
+| `PUT`  | `/api/domain`           | Change domain and optional ACME email       |
 
 **Config & Provider**
 

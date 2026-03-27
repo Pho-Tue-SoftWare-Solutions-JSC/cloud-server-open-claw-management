@@ -11,19 +11,20 @@ Deploy and manage [OpenClaw](https://github.com/openclaw/openclaw) on a VPS **wi
 - **ChatGPT OAuth** — Integrates OpenAI Codex via OAuth2 PKCE, with auto token refresh
 - **Multi-agent** — Multiple agents each with their own model & API key, routed by channel
 - **Messaging channels** — Telegram, Discord, Slack, Zalo OA
-- **Automatic SSL** — Let’s Encrypt via Caddy, or self-signed for IP addresses
+- **Automatic SSL** — ACME via Caddy (Let’s Encrypt primary, ZeroSSL fallback), or self-signed for IP addresses
 - **Device pairing** — Auto-approve via file I/O (near instant)
 
 ## Quick Start
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management/main/install.sh | \
-  bash -s -- --domain <DOMAIN_NAME> [--mgmt-key <KEY>]
+  bash -s -- --domain <DOMAIN_NAME> [--email <EMAIL>] [--mgmt-key <KEY>]
 ```
 
 | Option       | Description                                               |
 |--------------|----------------------------------------------------------|
 | `--domain`   | Domain name with DNS pointed to VPS (enables SSL)        |
+| `--email`    | Optional email for ACME registration and SSL notices     |
 | `--mgmt-key` | API key for Management API (auto-generated if omitted)   |
 
 ### After Installation
@@ -146,12 +147,13 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 
 | Method | Endpoint         | Description                                |
 |--------|------------------|--------------------------------------------|
-| `GET`  | `/api/info`      | Domain, IP, token, status, version         |
+| `GET`  | `/api/info`      | Domain, IP, token, status, version, issuer state |
 | `GET`  | `/api/status`    | OpenClaw + Caddy status                    |
 | `GET`  | `/api/version`   | OpenClaw version                           |
 | `GET`  | `/api/system`    | CPU, RAM, disk, versions                   |
 | `GET`  | `/api/logs`      | Logs (`?lines=100&service=openclaw`)       |
-| `GET`  | `/api/domain`    | Domain + SSL info                          |
+| `GET`  | `/api/domain`    | Domain + SSL info, ACME email, issuer      |
+| `GET`  | `/api/domain/issuer` | Live SSL issuer state + recent Caddy ACME logs |
 
 ### Service Control
 
@@ -164,7 +166,7 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 | `POST`  | `/api/upgrade`   | `npm update -g openclaw` + restart                 |
 | `POST`  | `/api/reset`     | Factory reset (`{"confirm":"RESET"}`)              |
 | `POST`  | `/api/self-update` | Update Management API from GitHub                |
-| `PUT`   | `/api/domain`    | Change domain (Caddy auto-provisions ACME SSL)      |
+| `PUT`   | `/api/domain`    | Change domain (Caddy auto-provisions ACME SSL, with optional email)      |
 
 ### AI Providers & Models
 

@@ -214,6 +214,113 @@ function removeEnvValue(key) {
   writeEnvFile(env.trim() + '\n');
 }
 
+function isValidEmail(email) {
+  const value = String(email || '').trim();
+  if (!value) return false;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function getAcmeEmail() {
+  const value = (getEnvValue('ACME_EMAIL') || '').trim();
+  return value || null;
+}
+
+function setAcmeEmail(email) {
+  const value = String(email || '').trim();
+  if (!value) {
+    setEnvValue('ACME_EMAIL', '');
+    setEnvValue('CADDY_ACME_EMAIL_DIRECTIVE', '# email not configured');
+    return null;
+  }
+  if (!isValidEmail(value)) throw new Error('Invalid email format');
+  setEnvValue('ACME_EMAIL', value);
+  setEnvValue('CADDY_ACME_EMAIL_DIRECTIVE', `email ${value}`);
+  return value;
+}
+
+function detectCertificateIssuerInfo(host) {
+  const target = normalizeDomainLikeValue(host);
+  if (!target) return null;
+  try {
+    const escaped = target.replace(/'/g, `'\\''`);
+    const issuer = shell(`timeout 15 sh -c "echo | openssl s_client -servername '${escaped}' -connect '${escaped}:443' 2>/dev/null | openssl x509 -noout -issuer -subject -dates"`, 20000);
+    if (!issuer) return null;
+    const lines = issuer.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const info = {
+      host: target,
+      raw: issuer,
+      issuer: lines.find(line => line.startsWith('issuer=')) || null,
+      subject: lines.find(line => line.startsWith('subject=')) || null,
+      notBefore: lines.find(line => line.startsWith('notBefore=')) || null,
+      notAfter: lines.find(line => line.startsWith('notAfter=')) || null,
+      provider: 'unknown'
+    };
+    const rawLower = issuer.toLowerCase();
+    if (rawLower.includes('let\'s encrypt') || rawLower.includes('letsencrypt')) info.provider = 'letsencrypt';
+    else if (rawLower.includes('zerossl')) info.provider = 'zerossl';
+    return info;
+  } catch {
+    return null;
+  }
+}
+
+function waitForCertificateIssuerInfo(host, attempts = 5, delayMs = 3000) {
+  for (let i = 0; i < attempts; i++) {
+    const info = detectCertificateIssuerInfo(host);
+    if (info) return info;
+    if (i < attempts - 1) execSync(`sleep ${Math.max(1, Math.ceil(delayMs / 1000))}`);
+  }
+  return null;
+}
+
+function buildSslIssuerState(rawDomain, caddyTls = '', providedIssuerInfo) {
+  const normalizedDomain = normalizeDomainLikeValue(rawDomain);
+  const sslMode = normalizedDomain
+    ? (caddyTls === 'tls internal' ? 'self-signed' : 'acme')
+    : 'none';
+
+  const sslIssuerInfo = providedIssuerInfo !== undefined
+    ? providedIssuerInfo
+    : (sslMode === 'acme' && normalizedDomain ? detectCertificateIssuerInfo(normalizedDomain) : null);
+  const sslIssuer = sslIssuerInfo ? sslIssuerInfo.provider : null;
+  const sslFallbackUsed = sslIssuer === 'zerossl';
+
+  let sslIssuerHint = null;
+  if (sslMode === 'self-signed') {
+    sslIssuerHint = 'Using self-signed/internal TLS.';
+  } else if (sslMode === 'none') {
+    sslIssuerHint = 'No public TLS issuer is configured.';
+  } else if (sslIssuer === 'letsencrypt') {
+    sslIssuerHint = 'Using Let\'s Encrypt as the primary ACME issuer.';
+  } else if (sslIssuer === 'zerossl') {
+    sslIssuerHint = 'Using ZeroSSL as the ACME fallback issuer.';
+  } else {
+    sslIssuerHint = 'ACME is enabled, but the live issuer could not be detected yet.';
+  }
+
+  return {
+    normalizedDomain,
+    sslMode,
+    sslIssuer,
+    sslIssuerDetails: sslIssuerInfo,
+    sslFallbackUsed,
+    sslIssuerHint
+  };
+}
+
+function getRecentCaddyAcmeLogLines(lines = 60) {
+  try {
+    const out = shell(`journalctl -u ${CADDY_SERVICE} --no-pager -n ${Math.max(10, lines)} 2>/dev/null`, 15000);
+    return out
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line && /(acme|certificate|issuer|let'?s encrypt|zerossl)/i.test(line))
+      .slice(-10);
+  } catch {
+    return [];
+  }
+}
+
 function normalizeDomainLikeValue(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -2239,6 +2346,7 @@ const server = http.createServer(async (req, res) => {
       const domain = normalizeDomainLikeValue(rawDomain);
       const host = domain || serverIP;
       const caddyTls = getEnvValue('CADDY_TLS') || '';
+      const acmeEmail = getAcmeEmail();
 
       // Kiem tra DNS domain da tro dung IP chua (dung Cloudflare DoH)
       let dnsStatus = null;
@@ -2258,9 +2366,7 @@ const server = http.createServer(async (req, res) => {
       }
 
       // SSL status (derived from .env)
-      const sslMode = domain
-        ? (caddyTls === 'tls internal' ? 'self-signed' : 'acme')
-        : 'none';
+      const sslState = buildSslIssuerState(domain, caddyTls);
 
       const latestVersion = getLatestVersion();
 
@@ -2276,7 +2382,12 @@ const server = http.createServer(async (req, res) => {
         mgmtVersion: MGMT_VERSION,
         latestMgmtVersion: latestVersion || MGMT_VERSION,
         mgmtUpdateAvailable: latestVersion ? latestVersion !== MGMT_VERSION : false,
-        ssl: sslMode,
+        ssl: sslState.sslMode,
+        acmeEmail,
+        sslIssuer: sslState.sslIssuer,
+        sslIssuerDetails: sslState.sslIssuerDetails,
+        sslIssuerHint: sslState.sslIssuerHint,
+        sslFallbackUsed: sslState.sslFallbackUsed,
         dnsStatus,
         ...(dnsStatus === 'not_pointed' ? { dnsWarning: `DNS for ${domain} does not point to ${serverIP}. Update your A record to enable ACME SSL (Let's Encrypt, fallback ZeroSSL).` } : {})
       });
@@ -2312,6 +2423,8 @@ const server = http.createServer(async (req, res) => {
       const caddyTls = getEnvValue('CADDY_TLS') || '';
       const isIP = domain && /^https?:\/\//.test(domain);
       const isDomain = domain && !isIP && domain !== 'localhost';
+      const acmeEmail = getAcmeEmail();
+      const sslState = buildSslIssuerState(isDomain ? domain : null, caddyTls);
 
       return json(res, 200, {
         ok: true,
@@ -2319,6 +2432,35 @@ const server = http.createServer(async (req, res) => {
         ip: getServerIP(),
         ssl: isDomain && !caddyTls,  // real domain + no explicit TLS = auto ACME (Let's Encrypt, fallback ZeroSSL)
         selfSignedSSL: caddyTls === 'tls internal',
+        acmeEmail,
+        sslIssuer: sslState.sslIssuer,
+        sslIssuerDetails: sslState.sslIssuerDetails,
+        sslIssuerHint: sslState.sslIssuerHint,
+        sslFallbackUsed: sslState.sslFallbackUsed,
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/domain/issuer — Xem issuer SSL hien tai + log lien quan
+  // =========================================================================
+  if (route(req, 'GET', '/api/domain/issuer')) {
+    try {
+      const rawDomain = getConfiguredDomainRaw() || null;
+      const caddyTls = getEnvValue('CADDY_TLS') || '';
+      const isIP = rawDomain && /^https?:\/\//.test(rawDomain);
+      const domain = rawDomain && !isIP && rawDomain !== 'localhost' ? rawDomain : null;
+      const sslState = buildSslIssuerState(domain, caddyTls);
+
+      return json(res, 200, {
+        ok: true,
+        domain,
+        ssl: sslState.sslMode,
+        sslIssuer: sslState.sslIssuer,
+        sslIssuerDetails: sslState.sslIssuerDetails,
+        sslIssuerHint: sslState.sslIssuerHint,
+        sslFallbackUsed: sslState.sslFallbackUsed,
+        recentCaddyAcmeLogs: getRecentCaddyAcmeLogLines()
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -2331,8 +2473,11 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req);
       const domain = (body.domain || '').trim().toLowerCase();
       const email = (body.email || '').trim();
+      const hasEmailField = Object.prototype.hasOwnProperty.call(body, 'email');
+      const previousAcmeEmail = getAcmeEmail();
 
       if (!domain) return json(res, 400, { ok: false, error: 'Missing domain' });
+      if (email && !isValidEmail(email)) return json(res, 400, { ok: false, error: 'Invalid email format' });
       if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(domain)) {
         return json(res, 400, { ok: false, error: 'Invalid domain format' });
       }
@@ -2356,6 +2501,7 @@ const server = http.createServer(async (req, res) => {
       // Update .env with new domain (Caddy auto ACME for real domains; Let's Encrypt with ZeroSSL fallback)
       setEnvValue('DOMAIN', domain);
       setEnvValue('CADDY_TLS', '');
+      if (hasEmailField) setAcmeEmail(email);
 
       // Download latest Caddyfile template from repo
       try {
@@ -2370,13 +2516,33 @@ const server = http.createServer(async (req, res) => {
         execSync('sleep 3');
         const { status: caddyStatus } = getServiceStatus(CADDY_SERVICE);
         if (caddyStatus === 'running') {
-          return json(res, 200, { ok: true, domain });
+          const issuerInfo = waitForCertificateIssuerInfo(domain, 5, 3000);
+          const sslState = buildSslIssuerState(domain, '', issuerInfo);
+          if (issuerInfo) {
+            console.log(`[Caddy] Certificate issuer for ${domain}: ${issuerInfo.provider} (${issuerInfo.issuer || 'unknown issuer'})`);
+            if (sslState.sslFallbackUsed) {
+              console.log(`[Caddy] ZeroSSL fallback is active for ${domain}`);
+            }
+          } else {
+            console.log(`[Caddy] Certificate issuer for ${domain}: pending or unavailable`);
+          }
+          return json(res, 200, {
+            ok: true,
+            domain,
+            acmeEmail: getAcmeEmail(),
+            sslIssuer: sslState.sslIssuer,
+            sslIssuerDetails: sslState.sslIssuerDetails,
+            sslIssuerHint: sslState.sslIssuerHint,
+            sslFallbackUsed: sslState.sslFallbackUsed,
+            recentCaddyAcmeLogs: getRecentCaddyAcmeLogLines()
+          });
         }
       } catch {}
 
       // Rollback: revert domain to IP in .env
       setEnvValue('DOMAIN', `http://${serverIP}`);
       setEnvValue('CADDY_TLS', '');
+      if (hasEmailField) setAcmeEmail(previousAcmeEmail || '');
       try { systemctl('restart', CADDY_SERVICE, 15000); } catch {}
       return json(res, 500, { ok: false, error: 'Caddy failed to start with this domain. Rolled back to IP config.' });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
