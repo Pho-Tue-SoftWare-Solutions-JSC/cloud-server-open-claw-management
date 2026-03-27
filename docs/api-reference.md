@@ -293,6 +293,77 @@ curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/prefli
 
 ---
 
+### GET /api/domain/preflight/live
+
+Run live connectivity checks for ACME-related access after the standard preflight validation.
+
+**Query parameters:**
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `domain`  | Yes      | Lowercase FQDN to validate |
+| `email`   | No       | Optional ACME email to validate |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "requestedDomain": "openclaw.example.com",
+  "domain": "openclaw.example.com",
+  "ready": true,
+  "liveReady": true,
+  "liveChecks": {
+    "domain": "openclaw.example.com",
+    "checked": true,
+    "ready": true,
+    "localPort80Listening": true,
+    "localPort443Listening": true,
+    "publicPort80Reachable": true,
+    "publicPort443Reachable": true,
+    "httpProbe": {
+      "ok": true,
+      "url": "http://openclaw.example.com/.well-known/acme-challenge/openclaw-preflight",
+      "statusCode": 404,
+      "location": null,
+      "server": "Caddy"
+    },
+    "httpsProbe": {
+      "ok": true,
+      "url": "https://openclaw.example.com/",
+      "statusCode": 200,
+      "location": null,
+      "server": "Caddy"
+    },
+    "warnings": []
+  },
+  "acmeDiagnostics": {
+    "status": "ok",
+    "summary": "No known ACME failure signature was detected in recent Caddy logs.",
+    "findings": [],
+    "suggestedActions": []
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `liveReady` | `true` when both preflight validation and live connectivity checks pass |
+| `liveChecks.localPort80Listening` | Whether local TCP port `80` accepts connections |
+| `liveChecks.localPort443Listening` | Whether local TCP port `443` accepts connections |
+| `liveChecks.publicPort80Reachable` | Whether the domain accepts TCP connections on port `80` |
+| `liveChecks.publicPort443Reachable` | Whether the domain accepts TCP connections on port `443` |
+| `liveChecks.httpProbe` | HTTP probe result for an ACME challenge-like path |
+| `liveChecks.httpsProbe` | HTTPS probe result for the domain root |
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/preflight/live?domain=openclaw.example.com&email=admin@example.com"
+```
+
+---
+
 ### GET /api/domain/issuer
 
 Get the live SSL issuer state plus recent ACME-related Caddy log lines.

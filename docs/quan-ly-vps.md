@@ -136,6 +136,14 @@ This returns DNS readiness, optional email validation, current issuer info, rece
 
 If ACME is failing, check `acmeDiagnostics.findings` and `acmeDiagnostics.suggestedActions` first.
 
+### Live preflight check for ports 80/443
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/domain/preflight/live?domain=openclaw.example.com&email=admin@example.com"
+```
+
+Use this when DNS is already correct but you still suspect firewall, NAT, or reverse-proxy issues on ports `80` and `443`.
+
 ### Change domain (auto-provision ACME SSL: Let's Encrypt, fallback ZeroSSL)
 
 **Requirement:** Domain must already have an A record pointing to the VPS IP.

@@ -5,6 +5,8 @@
 // =============================================================================
 
 const http = require('http');
+const https = require('https');
+const net = require('net');
 const { execSync, exec, execFileSync, spawn } = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -452,6 +454,121 @@ function buildAcmeDiagnostics(logLines = []) {
     summary: findings[0].message,
     findings,
     suggestedActions
+  };
+}
+
+function checkTcpPort(host, port, timeoutMs = 5000) {
+  return new Promise(resolve => {
+    let settled = false;
+    const socket = net.createConnection({ host, port });
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      try { socket.destroy(); } catch {}
+      resolve(result);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish({ ok: true, host, port }));
+    socket.once('timeout', () => finish({ ok: false, host, port, error: 'timeout' }));
+    socket.once('error', (error) => finish({ ok: false, host, port, error: error.code || error.message || 'connect_error' }));
+  });
+}
+
+function probeHttpEndpoint(targetUrl, rejectUnauthorized = true, timeoutMs = 6000) {
+  return new Promise(resolve => {
+    let settled = false;
+
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    try {
+      const url = new URL(targetUrl);
+      const client = url.protocol === 'https:' ? https : http;
+      const req = client.request({
+        protocol: url.protocol,
+        hostname: url.hostname,
+        port: url.port || undefined,
+        path: `${url.pathname}${url.search}`,
+        method: 'GET',
+        timeout: timeoutMs,
+        rejectUnauthorized,
+        headers: {
+          'User-Agent': `openclaw-mgmt/${MGMT_VERSION}`
+        }
+      }, (res) => {
+        res.resume();
+        finish({
+          ok: true,
+          url: targetUrl,
+          statusCode: res.statusCode || null,
+          location: res.headers.location || null,
+          server: res.headers.server || null
+        });
+      });
+
+      req.once('timeout', () => req.destroy(new Error('timeout')));
+      req.once('error', (error) => finish({
+        ok: false,
+        url: targetUrl,
+        error: error.code || error.message || 'request_error'
+      }));
+      req.end();
+    } catch (error) {
+      finish({ ok: false, url: targetUrl, error: error.message || 'invalid_url' });
+    }
+  });
+}
+
+async function buildAcmeLiveConnectivity(rawDomain) {
+  const domain = normalizeDomainLikeValue(rawDomain);
+  if (!domain) {
+    return {
+      domain: null,
+      checked: false,
+      ready: false,
+      localPort80Listening: false,
+      localPort443Listening: false,
+      publicPort80Reachable: false,
+      publicPort443Reachable: false,
+      httpProbe: null,
+      httpsProbe: null,
+      warnings: ['Domain must be a lowercase public FQDN without protocol or IP address.']
+    };
+  }
+
+  const [local80, local443, public80, public443, httpProbe, httpsProbe] = await Promise.all([
+    checkTcpPort('127.0.0.1', 80),
+    checkTcpPort('127.0.0.1', 443),
+    checkTcpPort(domain, 80),
+    checkTcpPort(domain, 443),
+    probeHttpEndpoint(`http://${domain}/.well-known/acme-challenge/openclaw-preflight`, true),
+    probeHttpEndpoint(`https://${domain}/`, false)
+  ]);
+
+  const warnings = [];
+  if (!local80.ok) warnings.push('Local port 80 is not accepting TCP connections.');
+  if (!local443.ok) warnings.push('Local port 443 is not accepting TCP connections.');
+  if (!public80.ok) warnings.push(`Public TCP port 80 for ${domain} is not reachable.`);
+  if (!public443.ok) warnings.push(`Public TCP port 443 for ${domain} is not reachable.`);
+  if (!httpProbe.ok) warnings.push(`HTTP probe for ${domain} failed: ${httpProbe.error}.`);
+  if (!httpsProbe.ok) warnings.push(`HTTPS probe for ${domain} failed: ${httpsProbe.error}.`);
+
+  return {
+    domain,
+    checked: true,
+    ready: local80.ok && local443.ok && public80.ok && public443.ok,
+    localPort80Listening: local80.ok,
+    localPort443Listening: local443.ok,
+    publicPort80Reachable: public80.ok,
+    publicPort443Reachable: public443.ok,
+    httpProbe,
+    httpsProbe,
+    warnings
   };
 }
 
@@ -2589,6 +2706,30 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         ...preflight,
+        recentCaddyAcmeLogs,
+        acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/domain/preflight/live — Kiem tra ket noi thuc te cong 80/443
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/domain/preflight/live'))) {
+    try {
+      const preflight = buildAcmePreflight(m.query.domain, Object.prototype.hasOwnProperty.call(m.query, 'email') ? m.query.email : undefined);
+      if (!preflight.requestedDomain) {
+        return json(res, 400, { ok: false, error: 'Missing domain' });
+      }
+
+      const liveChecks = await buildAcmeLiveConnectivity(preflight.domain || preflight.requestedDomain);
+      const recentCaddyAcmeLogs = getRecentCaddyAcmeLogLines();
+
+      return json(res, 200, {
+        ok: true,
+        ...preflight,
+        liveReady: !!(preflight.ready && liveChecks.ready),
+        liveChecks,
         recentCaddyAcmeLogs,
         acmeDiagnostics: buildAcmeDiagnostics(recentCaddyAcmeLogs)
       });

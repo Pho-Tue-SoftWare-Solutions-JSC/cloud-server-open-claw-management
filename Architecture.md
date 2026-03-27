@@ -288,6 +288,7 @@ curl -H "Authorization: Bearer $MGMT_KEY" http://localhost:9998/api/system
 | `GET`  | `/api/logs`     | Logs (query: `?lines=100&service=openclaw`) |
 | `GET`  | `/api/domain`   | Domain + SSL info, ACME email, issuer   |
 | `GET`  | `/api/domain/preflight` | ACME readiness check + diagnostic hints |
+| `GET`  | `/api/domain/preflight/live` | Live port 80/443 and HTTP/HTTPS reachability |
 | `GET`  | `/api/domain/issuer` | Live SSL issuer state + ACME diagnostics |
 
 **Service Control**

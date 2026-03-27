@@ -537,6 +537,74 @@
           ]
         },
         {
+          "name": "Get Domain Preflight Live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/domain/preflight/live?domain=openclaw.example.com&email=admin@example.com",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "domain",
+                "preflight",
+                "live"
+              ],
+              "query": [
+                {
+                  "key": "domain",
+                  "value": "openclaw.example.com"
+                },
+                {
+                  "key": "email",
+                  "value": "admin@example.com"
+                }
+              ]
+            },
+            "description": "Run live TCP and HTTP/HTTPS reachability checks for ports 80 and 443 after the normal ACME preflight validation."
+          },
+          "response": [
+            {
+              "name": "Reachable",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/domain/preflight/live?domain=openclaw.example.com&email=admin@example.com",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "domain",
+                    "preflight",
+                    "live"
+                  ],
+                  "query": [
+                    {
+                      "key": "domain",
+                      "value": "openclaw.example.com"
+                    },
+                    {
+                      "key": "email",
+                      "value": "admin@example.com"
+                    }
+                  ]
+                },
+                "description": "Run live TCP and HTTP/HTTPS reachability checks for ports 80 and 443 after the normal ACME preflight validation."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"ok\": true,\n  \"requestedDomain\": \"openclaw.example.com\",\n  \"domain\": \"openclaw.example.com\",\n  \"ready\": true,\n  \"liveReady\": true,\n  \"liveChecks\": {\n    \"domain\": \"openclaw.example.com\",\n    \"checked\": true,\n    \"ready\": true,\n    \"localPort80Listening\": true,\n    \"localPort443Listening\": true,\n    \"publicPort80Reachable\": true,\n    \"publicPort443Reachable\": true,\n    \"httpProbe\": {\n      \"ok\": true,\n      \"url\": \"http://openclaw.example.com/.well-known/acme-challenge/openclaw-preflight\",\n      \"statusCode\": 404,\n      \"location\": null,\n      \"server\": \"Caddy\"\n    },\n    \"httpsProbe\": {\n      \"ok\": true,\n      \"url\": \"https://openclaw.example.com/\",\n      \"statusCode\": 200,\n      \"location\": null,\n      \"server\": \"Caddy\"\n    },\n    \"warnings\": []\n  },\n  \"acmeDiagnostics\": {\n    \"status\": \"ok\",\n    \"summary\": \"No known ACME failure signature was detected in recent Caddy logs.\",\n    \"findings\": [],\n    \"suggestedActions\": []\n  }\n}"
+            }
+          ]
+        },
+        {
           "name": "Get Domain Issuer",
           "request": {
             "method": "GET",
