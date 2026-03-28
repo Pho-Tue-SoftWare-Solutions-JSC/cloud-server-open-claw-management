@@ -190,7 +190,7 @@ OPENCLAW_VERSION=latest
 OPENCLAW_GATEWAY_PORT=18789
 OPENCLAW_GATEWAY_TOKEN=<gateway-token>
 
-# Management API (issued by my.hitechloud.vn — DO NOT DELETE OR MODIFY)
+# Management API (issued by my.hitechcloud.vn — DO NOT DELETE OR MODIFY)
 OPENCLAW_MGMT_API_KEY=<mgmt-api-key>
 
 # AI Provider API Keys (uncomment & fill as needed)
@@ -245,3 +245,5 @@ Returns the full configuration including:
 - Current provider and model
 - API keys (with sensitive parts masked)
 - Channels, gateway, browser, plugins
+
+> See also `quickstart.md` for first-time setup and `api-reference.md` for the full config-related endpoint list.

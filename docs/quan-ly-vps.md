@@ -6,8 +6,10 @@
 - [2. Domain + SSL Configuration](#2-domain--ssl-configuration)
 - [3. Upgrading Version](#3-upgrading-version)
 - [4. Viewing System Information](#4-viewing-system-information)
-- [5. Reset to Defaults](#5-reset-to-defaults)
-- [6. Troubleshooting](#6-troubleshooting)
+- [5. OpenClaw Diagnostics, Nodes & Presence](#5-openclaw-diagnostics-nodes--presence)
+- [6. Secrets, Security & Skills](#6-secrets-security--skills)
+- [7. Reset to Defaults](#7-reset-to-defaults)
+- [8. Troubleshooting](#8-troubleshooting)
 
 ---
 
@@ -267,7 +269,122 @@ Example result:
 
 ---
 
-## 5. Reset to Defaults
+## 5. OpenClaw Diagnostics, Nodes & Presence
+
+These routes are useful when the core services are up but you need upstream OpenClaw diagnostics instead of only host-level status.
+
+### Upstream OpenClaw status
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/openclaw/status?all=true&usage=true&timeoutMs=10000"
+```
+
+Use this when you want the upstream `openclaw status --json` output, including optional usage and deeper diagnostic sections.
+
+### Node fleet summary
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes/status?connected=true&lastConnected=24h"
+```
+
+This is helpful for quickly checking whether paired nodes are currently connected and recently active.
+
+### List nodes
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes?timeoutMs=10000"
+```
+
+### Describe one node
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes/node-123?timeoutMs=10000"
+```
+
+### Last heartbeat event
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/system/heartbeat/last?timeoutMs=10000"
+```
+
+### Enable or disable heartbeats
+
+```bash
+# Enable
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"timeoutMs":10000}' \
+  http://$VPS_IP:9998/api/system/heartbeat/enable
+
+# Disable
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"timeoutMs":10000}' \
+  http://$VPS_IP:9998/api/system/heartbeat/disable
+```
+
+### Presence view
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/system/presence?timeoutMs=10000"
+```
+
+Use presence data when the dashboard is reachable but some upstream systems or remote peers appear offline.
+
+---
+
+## 6. Secrets, Security & Skills
+
+### Reload secrets
+
+```bash
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"timeoutMs":10000}' \
+  http://$VPS_IP:9998/api/secrets/reload
+```
+
+Use this after updating files or external secret sources that are consumed by OpenClaw.
+
+### Audit secrets
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/secrets/audit?check=true&allowExec=false&timeoutMs=10000"
+```
+
+### Run security audit
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/security/audit?deep=true&timeoutMs=20000"
+```
+
+### Search skills
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/skills/search?query=gateway&limit=10&timeoutMs=10000"
+```
+
+### Check skill readiness
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/skills/check?timeoutMs=10000"
+```
+
+If a workflow depends on custom skills, run the readiness check before deeper debugging.
+
+---
+
+## 7. Reset to Defaults
 
 > **WARNING:** This action will **DELETE ALL data and configuration**, resetting the system to its initial state.
 
@@ -289,7 +406,7 @@ The system will:
 
 ---
 
-## 6. Troubleshooting
+## 8. Troubleshooting
 
 ### OpenClaw will not start
 
@@ -387,6 +504,39 @@ systemctl restart openclaw-mgmt
 # View logs
 journalctl -u openclaw-mgmt -f
 ```
+
+### Upstream health looks wrong even though services are running
+
+1. **Compare host status vs upstream status:**
+  ```bash
+  curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/status
+  curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/openclaw/status?all=true&usage=true"
+  ```
+
+2. **Check remote nodes and presence:**
+  ```bash
+  curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/nodes/status?connected=true"
+  curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system/presence
+  ```
+
+3. **Inspect heartbeat state:**
+  ```bash
+  curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system/heartbeat/last
+  ```
+
+### Secrets or skill-based workflows are failing
+
+1. **Reload secret sources:**
+  ```bash
+  curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/secrets/reload
+  ```
+
+2. **Run audits:**
+  ```bash
+  curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/secrets/audit?check=true"
+  curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/security/audit?deep=true"
+  curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/skills/check
+  ```
 
 ### Important environment variables — Do not delete
 

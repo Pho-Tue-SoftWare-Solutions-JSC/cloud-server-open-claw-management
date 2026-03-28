@@ -8,6 +8,8 @@
 - [4. Change AI Model](#4-change-ai-model)
 - [5. VPS Directory Structure](#5-vps-directory-structure)
 - [6. Basic Management Commands](#6-basic-management-commands)
+- [7. Next Steps](#7-next-steps)
+- [8. Useful Follow-up API Checks](#8-useful-follow-up-api-checks)
 
 ---
 
@@ -22,9 +24,9 @@ http://<IP>:9998/pair?token=<gateway-token>
 **Example:**
 - `http://180.93.138.155:9998/pair?token=abc123...`
 
-**Login information** is available in the my.hitechcloud.vn control panel:
+**Pairing information** is available in the my.hitechcloud.vn control panel:
 - **Gateway Token** — use for pairing devices
-- **Management API Key** — issued and managed by my.hitechcloud.vn, used to connect the panel with your VPS
+- **Management API Key** — issued and managed by my.hitechcloud.vn, and used by the panel to connect to your VPS
 
 > **Important:** Do **not** manually change or delete `OPENCLAW_MGMT_API_KEY` in the `.env` file on your VPS. If changed, the my.hitechcloud.vn panel will not be able to connect.
 
@@ -32,7 +34,7 @@ http://<IP>:9998/pair?token=<gateway-token>
 
 ## 2. Add AI Provider API Key
 
-OpenClaw requires an API key from your chosen provider. Three providers supported:
+OpenClaw requires an API key from your chosen provider. Three common providers are listed below:
 
 | Provider (AI)         | Get API Key At                                 |
 |-----------------------|------------------------------------------------|
@@ -104,7 +106,7 @@ curl -X PUT \
 ├── config/
 │   ├── openclaw.json                   # Current config (model, gateway, browser)
 │   ├── devices/
-���   │   ├── pending.json                # Devices awaiting pairing
+│   │   ├── pending.json                # Devices awaiting pairing
 │   │   └── paired.json                 # Paired devices
 │   └── agents/main/agent/
 │       └── auth-profiles.json          # API keys (OpenClaw format)
@@ -143,7 +145,7 @@ systemctl stop openclaw
 
 ---
 
-## Next Steps
+## 7. Next Steps
 
 - [Detailed Configuration](cau-hinh.md) — Change model, gateway, browser settings
 - [Hướng dẫn config template](huong-dan-config-template.md) — Cấu trúc file `config/*.json` và cách thêm provider mới
@@ -151,3 +153,28 @@ systemctl stop openclaw
 - [Messaging Channel Integration](kenh-nhan-tin.md) — Telegram, Discord, Zalo, Slack
 - [VPS Management](quan-ly-vps.md) — Domain, SSL, management commands
 - [API Reference](api-reference.md) — Complete API endpoint list
+
+## 8. Useful Follow-up API Checks
+
+After first setup, these checks are useful for daily operations:
+
+```bash
+# Core upstream status
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/openclaw/status?all=true&usage=true"
+
+# Node fleet summary
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes/status?connected=true&lastConnected=24h"
+
+# Presence / heartbeat
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system/presence
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system/heartbeat/last
+```
+
+If you use custom secret sources or skills, also review `quan-ly-vps.md` and `api-reference.md` for these routes:
+- `/api/secrets/reload`
+- `/api/secrets/audit`
+- `/api/security/audit`
+- `/api/skills/search`
+- `/api/skills/check`

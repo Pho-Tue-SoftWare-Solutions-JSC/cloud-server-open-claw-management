@@ -17,6 +17,7 @@
 - [11. Common Errors & Solutions](#11-common-errors--solutions)
 - [12. Race Condition Note](#12-race-condition-note)
 - [13. Debugging Commands for VPS](#13-debugging-commands-for-vps)
+- [14. Upstream Diagnostics Routes](#14-upstream-diagnostics-routes)
 
 ---
 
@@ -374,3 +375,86 @@ systemctl restart openclaw
 **Check:**
 ```bash
 journalctl -u caddy --no-pager -n 
+
+### 11.5 — Host service status is OK but upstream status still looks unhealthy
+
+**Symptom:** `/api/status` shows services as running, but upstream features, dashboard behavior, or remote peers still look degraded.
+
+**Checks:**
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/status
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/openclaw/status?all=true&usage=true&deep=true"
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/nodes/status?connected=true&lastConnected=24h"
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system/presence
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system/heartbeat/last
+```
+
+**Likely causes:**
+- Host process is running, but upstream runtime state is stale.
+- Remote nodes are disconnected, filtered out, or using the wrong token/url.
+- Heartbeats were disabled or stopped updating.
+
+**Next actions:**
+- Compare heartbeat/presence timestamps with `journalctl -u openclaw`.
+- Re-enable heartbeats if they were disabled for maintenance.
+
+### 11.6 — Secret-backed config does not match runtime behavior
+
+**Symptom:** Config appears correct, but runtime still acts as if secrets are missing, stale, or unresolved.
+
+**Checks:**
+```bash
+curl -X POST -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/secrets/reload
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/secrets/audit?check=true&allowExec=false"
+```
+
+**Likely causes:**
+- Secret references changed on disk but were not reloaded yet.
+- Audit findings are present in JSON output even when upstream exits non-zero.
+- Exec-based refs require `allowExec=true` during audit.
+
+**Next actions:**
+- Re-run the audit with the operator’s intended flags.
+- Inspect the returned JSON body, not only the HTTP code.
+
+### 11.7 — Skill workflow differs between hosts
+
+**Symptom:** A skill works on one VPS but fails discovery or readiness checks on another.
+
+**Checks:**
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/skills/search?query=vps%20audit&limit=10"
+curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/skills/check
+curl -H "Authorization: Bearer $MGMT_KEY" "http://$VPS_IP:9998/api/skills/bins?agentId=main"
+```
+
+**Likely causes:**
+- Required binaries differ between hosts.
+- Skill metadata exists, but readiness checks report missing requirements.
+- Wrong `agentId` or workspace roots are being inspected.
+
+**Next actions:**
+- Compare `requiredBins` and readiness output across hosts.
+- Verify the selected agent and skill root directories.
+
+---
+
+## 14. Upstream Diagnostics Routes
+
+Use these routes when process-level checks are insufficient.
+
+| Route | Purpose | Notes |
+|------|---------|-------|
+| `GET /api/openclaw/status` | Upstream `openclaw status --json` | Supports `all`, `usage`, `deep`, `timeoutMs` |
+| `GET /api/nodes/status` | Node fleet summary | Supports `connected`, `lastConnected`, `url`, `token` |
+| `GET /api/nodes` | List nodes | Same filter family as nodes status |
+| `GET /api/nodes/:id` | Describe one node | Useful for targeted peer troubleshooting |
+| `GET /api/system/heartbeat/last` | Last heartbeat event | Gateway-backed |
+| `POST /api/system/heartbeat/enable` | Enable heartbeats | Optional `timeoutMs` in body |
+| `POST /api/system/heartbeat/disable` | Disable heartbeats | Optional `timeoutMs` in body |
+| `GET /api/system/presence` | Presence list | Gateway-backed |
+| `POST /api/secrets/reload` | Reload secret sources | CLI-backed |
+| `GET /api/secrets/audit` | Audit secret refs | May still return parsed JSON on upstream non-zero exit |
+| `GET /api/security/audit` | Security audit | Supports `deep`, `token`, `password` |
+| `GET /api/skills/search` | Search skills | Supports `query`, `q`, `limit` |
+| `GET /api/skills/check` | Skill readiness | Quick dependency validation |

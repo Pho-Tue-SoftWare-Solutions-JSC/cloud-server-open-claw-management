@@ -347,6 +347,44 @@
       "name": "Gateway",
       "item": [
         {
+          "name": "Get OpenClaw Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/openclaw/status?all=true&usage=true&deep=false&timeoutMs=10000",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "openclaw",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "all",
+                  "value": "true"
+                },
+                {
+                  "key": "usage",
+                  "value": "true"
+                },
+                {
+                  "key": "deep",
+                  "value": "false"
+                },
+                {
+                  "key": "timeoutMs",
+                  "value": "10000"
+                }
+              ]
+            },
+            "description": "Run upstream `openclaw status --json` with optional `--all`, `--usage`, `--deep`, and `--timeout`. Use this when host-level `/api/status` looks healthy but you need deeper upstream diagnostics."
+          },
+          "response": []
+        },
+        {
           "name": "Get Gateway Usage Cost",
           "request": {
             "method": "GET",
@@ -395,6 +433,95 @@
               ]
             },
             "description": "Discover local or wide-area gateways using upstream `openclaw gateway discover --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Nodes Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/nodes/status?connected=true&lastConnected=24h&timeoutMs=10000",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "nodes",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "connected",
+                  "value": "true"
+                },
+                {
+                  "key": "lastConnected",
+                  "value": "24h"
+                },
+                {
+                  "key": "timeoutMs",
+                  "value": "10000"
+                }
+              ]
+            },
+            "description": "Run upstream `openclaw nodes status --json` with optional connected and last-connected filters. Useful for checking remote node fleet health and recent connectivity."
+          },
+          "response": []
+        },
+        {
+          "name": "List Nodes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/nodes?connected=false&timeoutMs=10000",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "nodes"
+              ],
+              "query": [
+                {
+                  "key": "connected",
+                  "value": "false"
+                },
+                {
+                  "key": "timeoutMs",
+                  "value": "10000"
+                }
+              ]
+            },
+            "description": "Run upstream `openclaw nodes list --json` to list pending and paired nodes. Supports the same gateway override and timeout query family as nodes status."
+          },
+          "response": []
+        },
+        {
+          "name": "Describe Node",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/nodes/node-123?timeoutMs=10000",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "nodes",
+                "node-123"
+              ],
+              "query": [
+                {
+                  "key": "timeoutMs",
+                  "value": "10000"
+                }
+              ]
+            },
+            "description": "Run upstream `openclaw nodes describe --node <id> --json` for one node. Use when one peer looks inconsistent with fleet-level status."
           },
           "response": []
         }
@@ -3825,7 +3952,7 @@
                 }
               ]
             },
-            "description": "Search ClawHub skills using upstream `openclaw skills search --json`."
+            "description": "Search ClawHub skills using upstream `openclaw skills search --json`. Helpful when validating whether a skill exists before enabling or debugging it."
           },
           "response": []
         },
@@ -3845,7 +3972,7 @@
                 "check"
               ]
             },
-            "description": "Run upstream `openclaw skills check --json` to see which skills are ready versus missing requirements."
+            "description": "Run upstream `openclaw skills check --json` to see which skills are ready versus missing requirements. Pair with `/api/skills/bins` when comparing hosts."
           },
           "response": []
         },
@@ -3917,7 +4044,7 @@
                       }
                     ]
                   },
-                  "description": "Read the last upstream heartbeat event via gateway method `last-heartbeat`."
+                  "description": "Read the last upstream heartbeat event via gateway method `last-heartbeat`. Helpful for verifying that background liveness signals are still flowing."
                 },
                 "response": []
               },
@@ -3947,7 +4074,7 @@
                       "enable"
                     ]
                   },
-                  "description": "Enable upstream heartbeats through gateway method `set-heartbeats` with `enabled=true`."
+                  "description": "Enable upstream heartbeats through gateway method `set-heartbeats` with `enabled=true`. Useful after temporary maintenance or debugging sessions."
                 },
                 "response": []
               },
@@ -3977,7 +4104,7 @@
                       "disable"
                     ]
                   },
-                  "description": "Disable upstream heartbeats through gateway method `set-heartbeats` with `enabled=false`."
+                  "description": "Disable upstream heartbeats through gateway method `set-heartbeats` with `enabled=false`. Use cautiously because some health workflows rely on heartbeat activity."
                 },
                 "response": []
               },
@@ -4004,7 +4131,7 @@
                       }
                     ]
                   },
-                  "description": "List system presence entries via upstream gateway method `system-presence`."
+                  "description": "List system presence entries via upstream gateway method `system-presence`. Use alongside heartbeat and nodes status when diagnosing remote availability."
                 },
                 "response": []
               }
@@ -4038,7 +4165,7 @@
                       "reload"
                     ]
                   },
-                  "description": "Reload runtime secret references using upstream `openclaw secrets reload --json`."
+                  "description": "Reload runtime secret references using upstream `openclaw secrets reload --json`. Run this after changing secret files, env-backed refs, or external secret providers."
                 },
                 "response": []
               },
@@ -4075,7 +4202,7 @@
                       }
                     ]
                   },
-                  "description": "Run upstream `openclaw secrets audit --json` to inspect plaintext secrets, unresolved refs, and precedence drift."
+                  "description": "Run upstream `openclaw secrets audit --json` to inspect plaintext secrets, unresolved refs, and precedence drift. Review the JSON body even if the upstream CLI reports findings through a non-zero exit code."
                 },
                 "response": []
               }
@@ -4112,7 +4239,7 @@
                       }
                     ]
                   },
-                  "description": "Run upstream `openclaw security audit --json` for security foot-gun detection without applying fixes."
+                  "description": "Run upstream `openclaw security audit --json` for security foot-gun detection without applying fixes. Use `deep=true` for broader checks when longer runtime is acceptable."
                 },
                 "response": []
               }

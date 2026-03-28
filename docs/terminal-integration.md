@@ -2,6 +2,8 @@
 
 A small component embedded into a Laravel system. `mgmt_url` and `mgmt_key` are passed from the parent component — each user has their own VPS and key.
 
+> Related docs: `quickstart.md`, `quan-ly-vps.md`, and `api-reference.md`.
+
 ---
 
 ## Security Architecture
@@ -20,6 +22,8 @@ TerminalProxyController  →  fetches url/key from session  → proxies to VPS
 ```
 
 > `mgmt_key` is kept **server-side in the session**, never appears in HTML or JS sent to the browser.
+
+The terminal proxy complements the Management API. Use it for guided operational commands, and use `/api/status`, `/api/openclaw/status`, and the documented REST routes when you need structured JSON responses.
 
 ---
 

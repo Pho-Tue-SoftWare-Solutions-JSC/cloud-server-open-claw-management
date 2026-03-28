@@ -109,6 +109,16 @@ systemctl restart openclaw
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/status
 ```
 
+### Check upstream diagnostics
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/openclaw/status?all=true&usage=true"
+
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes/status?connected=true&lastConnected=24h"
+```
+
 ### Check services
 
 ```bash
@@ -128,3 +138,9 @@ journalctl -u openclaw-mgmt -f --no-pager -n 50
 # OpenClaw logs
 journalctl -u openclaw -f --no-pager -n 50
 ```
+
+### Related docs
+
+- `quickstart.md` — first-run checks and daily operator flow
+- `quan-ly-vps.md` — VPS operations, diagnostics, secrets, security, and skills
+- `api-reference.md` — full endpoint reference

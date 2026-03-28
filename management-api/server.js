@@ -3262,6 +3262,41 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
+    // =========================================================================
+    // GET /api/openclaw/status — Upstream openclaw status summary/diagnostics
+    // =========================================================================
+    if (route(req, 'GET', '/api/openclaw/status')) {
+      try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const args = ['status'];
+        const includeAll = parseBoolean(url.searchParams.get('all'));
+        const includeUsage = parseBoolean(url.searchParams.get('usage'));
+        const includeDeep = parseBoolean(url.searchParams.get('deep'));
+        const timeoutValue = url.searchParams.get('timeoutMs') || url.searchParams.get('timeout');
+        if (includeAll) args.push('--all');
+        if (includeUsage) args.push('--usage');
+        if (includeDeep) args.push('--deep');
+        appendCliOption(args, '--timeout', timeoutValue);
+        const timeoutMs = Number(timeoutValue || 30000) || 30000;
+        const result = openclawCli(args, { json: true, timeoutMs });
+        return json(res, 200, {
+          ok: true,
+          command: 'status',
+          flags: {
+            all: includeAll,
+            usage: includeUsage,
+            deep: includeDeep,
+            timeoutMs
+          },
+          result
+        });
+      } catch (e) {
+        const stderr = e.stderr ? String(e.stderr).trim() : '';
+        const stdout = e.stdout ? String(e.stdout).trim() : '';
+        return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+      }
+    }
+
   // =========================================================================
   // GET /api/gateway/status — Upstream status summary
   // =========================================================================
@@ -3312,6 +3347,70 @@ const server = http.createServer(async (req, res) => {
         ? result.beacons
         : (Array.isArray(result) ? result : (Array.isArray(result?.results) ? result.results : []));
       return json(res, 200, { ok: true, command: 'gateway discover', count: beacons.length, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/nodes/status — Upstream nodes status summary
+  // =========================================================================
+  if (route(req, 'GET', '/api/nodes/status')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['nodes', 'status'];
+      appendCliOption(args, '--url', url.searchParams.get('url'));
+      appendCliOption(args, '--token', url.searchParams.get('token'));
+      appendCliOption(args, '--timeout', url.searchParams.get('timeoutMs') || url.searchParams.get('timeout'));
+      appendCliOption(args, '--last-connected', url.searchParams.get('lastConnected') || url.searchParams.get('last-connected'));
+      if (parseBoolean(url.searchParams.get('connected'))) args.push('--connected');
+      const timeoutMs = Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 10000) || 10000;
+      const result = openclawCli(args, { timeoutMs, json: true });
+      return json(res, 200, { ok: true, command: 'nodes status', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/nodes — Upstream pending/paired nodes list
+  // =========================================================================
+  if (route(req, 'GET', '/api/nodes')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['nodes', 'list'];
+      appendCliOption(args, '--url', url.searchParams.get('url'));
+      appendCliOption(args, '--token', url.searchParams.get('token'));
+      appendCliOption(args, '--timeout', url.searchParams.get('timeoutMs') || url.searchParams.get('timeout'));
+      appendCliOption(args, '--last-connected', url.searchParams.get('lastConnected') || url.searchParams.get('last-connected'));
+      if (parseBoolean(url.searchParams.get('connected'))) args.push('--connected');
+      const timeoutMs = Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 10000) || 10000;
+      const result = openclawCli(args, { timeoutMs, json: true });
+      return json(res, 200, { ok: true, command: 'nodes list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/nodes/:id — Upstream node description
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/nodes/:id'))) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['nodes', 'describe', '--node', m.params.id];
+      appendCliOption(args, '--url', url.searchParams.get('url'));
+      appendCliOption(args, '--token', url.searchParams.get('token'));
+      appendCliOption(args, '--timeout', url.searchParams.get('timeoutMs') || url.searchParams.get('timeout'));
+      const timeoutMs = Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 10000) || 10000;
+      const result = openclawCli(args, { timeoutMs, json: true });
+      return json(res, 200, { ok: true, command: 'nodes describe', nodeId: m.params.id, result });
     } catch (e) {
       const stderr = e.stderr ? String(e.stderr).trim() : '';
       const stdout = e.stdout ? String(e.stdout).trim() : '';

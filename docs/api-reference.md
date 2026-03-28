@@ -2,6 +2,7 @@
 
 ## Table of Contents
 
+- [Endpoint Groups Overview](#endpoint-groups-overview)
 - [General Information](#general-information)
 - [Authentication](#authentication)
 - [Rate Limiting](#rate-limiting)
@@ -9,6 +10,16 @@
   - [GET /api/info](#get-apiinfo)
   - [GET /api/status](#get-apistatus)
   - [GET /api/system](#get-apisystem)
+- [OpenClaw & Nodes](#openclaw--nodes)
+  - [GET /api/openclaw/status](#get-apiopenclawstatus)
+  - [GET /api/nodes/status](#get-apinodesstatus)
+  - [GET /api/nodes](#get-apinodes)
+  - [GET /api/nodes/:id](#get-apinodesid)
+- [System Controls](#system-controls)
+  - [GET /api/system/heartbeat/last](#get-apisystemheartbeatlast)
+  - [POST /api/system/heartbeat/enable](#post-apisystemheartbeatenable)
+  - [POST /api/system/heartbeat/disable](#post-apisystemheartbeatdisable)
+  - [GET /api/system/presence](#get-apisystempresence)
 - [Domain & SSL](#domain--ssl)
   - [GET /api/domain](#get-apidomain)
   - [GET /api/domain/issuer](#get-apidomainissuer)
@@ -39,7 +50,34 @@
   - [DELETE /api/env/:key](#delete-apienvkey)
 - [CLI Proxy](#cli-proxy)
   - [POST /api/cli](#post-apicli)
+- [Secrets & Security](#secrets--security)
+  - [POST /api/secrets/reload](#post-apisecretsreload)
+  - [GET /api/secrets/audit](#get-apisecretsaudit)
+  - [GET /api/security/audit](#get-apisecurityaudit)
+- [Skills](#skills)
+  - [GET /api/skills/search](#get-apiskillssearch)
+  - [GET /api/skills/check](#get-apiskillscheck)
 - [Common Error Codes](#common-error-codes)
+
+---
+
+## Endpoint Groups Overview
+
+This reference is organized by operational area instead of implementation order in `management-api/server.js`.
+
+| Group | Scope |
+|-------|-------|
+| **Service Information** | Core service metadata and host status |
+| **OpenClaw & Nodes** | Upstream CLI-backed status and node inspection routes |
+| **System Controls** | Heartbeat and presence endpoints backed by upstream gateway methods |
+| **Domain & SSL** | Domain assignment, issuer checks, and ACME diagnostics |
+| **Version / Service Control / Logs** | Lifecycle operations and operational visibility |
+| **Configuration / Channels / Environment** | Runtime config, channels, and env management |
+| **CLI Proxy** | Direct but guarded upstream CLI command execution |
+| **Secrets & Security** | Secret reload/audit and security audit workflows |
+| **Skills** | Skill discovery and readiness checks |
+
+For a quick endpoint matrix, see the tables in `README.md`. For change history specific to the latest documentation refresh, see `docs/CHANGELOG-docs-api-parity-2026-03-28.md`.
 
 ---
 
@@ -178,6 +216,272 @@ System info (CPU, RAM, disk, OS).
 
 ```bash
 curl -H "Authorization: Bearer $MGMT_KEY" http://$VPS_IP:9998/api/system
+```
+
+---
+
+## OpenClaw & Nodes
+
+### GET /api/openclaw/status
+
+Run upstream `openclaw status --json` through the Management API.
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `all`       | No       | Include all sections (`true` / `false`) |
+| `usage`     | No       | Include usage summary |
+| `deep`      | No       | Include deeper diagnostics |
+| `timeoutMs` | No       | CLI timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "status",
+  "flags": {
+    "all": true,
+    "usage": true,
+    "deep": false,
+    "timeoutMs": 10000
+  },
+  "result": {
+    "gateway": {
+      "healthy": true
+    },
+    "sessions": {
+      "count": 3
+    }
+  }
+}
+```
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/openclaw/status?all=true&usage=true&timeoutMs=10000"
+```
+
+---
+
+### GET /api/nodes/status
+
+Run upstream `openclaw nodes status --json` to get aggregated node health.
+
+**Query parameters:**
+
+| Parameter       | Required | Description |
+|-----------------|----------|-------------|
+| `connected`     | No       | Only include connected nodes when `true` |
+| `lastConnected` | No       | Filter by recent activity window such as `24h` |
+| `url`           | No       | Override upstream gateway URL |
+| `token`         | No       | Override gateway token |
+| `timeoutMs`     | No       | CLI timeout in milliseconds |
+| `timeout`       | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "nodes status",
+  "result": {
+    "connected": 2,
+    "pending": 1,
+    "paired": 5
+  }
+}
+```
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes/status?connected=true&lastConnected=24h"
+```
+
+---
+
+### GET /api/nodes
+
+Run upstream `openclaw nodes list --json` to list paired or pending nodes.
+
+**Query parameters:** same as `GET /api/nodes/status`.
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "nodes list",
+  "result": {
+    "nodes": [
+      {
+        "id": "node-123",
+        "status": "connected"
+      }
+    ]
+  }
+}
+```
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes?timeoutMs=10000"
+```
+
+---
+
+### GET /api/nodes/:id
+
+Run upstream `openclaw nodes describe --node <id> --json`.
+
+**Path parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `id`      | Node identifier |
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `url`       | No       | Override upstream gateway URL |
+| `token`     | No       | Override gateway token |
+| `timeoutMs` | No       | CLI timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "nodes describe",
+  "nodeId": "node-123",
+  "result": {
+    "id": "node-123",
+    "status": "connected"
+  }
+}
+```
+
+**Example:**
+
+```bash
+curl -H "Authorization: Bearer $MGMT_KEY" \
+  "http://$VPS_IP:9998/api/nodes/node-123?timeoutMs=10000"
+```
+
+---
+
+## System Controls
+
+### GET /api/system/heartbeat/last
+
+Return the latest upstream heartbeat event.
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `timeoutMs` | No       | Gateway timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "method": "last-heartbeat",
+  "result": {
+    "timestamp": "2026-03-27T15:20:00Z"
+  }
+}
+```
+
+---
+
+### POST /api/system/heartbeat/enable
+
+Enable upstream heartbeats.
+
+**Request body (optional):**
+
+```json
+{
+  "timeoutMs": 30000
+}
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "method": "set-heartbeats",
+  "enabled": true,
+  "result": {
+    "enabled": true
+  }
+}
+```
+
+---
+
+### POST /api/system/heartbeat/disable
+
+Disable upstream heartbeats.
+
+**Request body (optional):**
+
+```json
+{
+  "timeoutMs": 30000
+}
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "method": "set-heartbeats",
+  "enabled": false,
+  "result": {
+    "enabled": false
+  }
+}
+```
+
+---
+
+### GET /api/system/presence
+
+Return upstream system presence information.
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `timeoutMs` | No       | Gateway timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "method": "system-presence",
+  "result": {
+    "systems": []
+  }
+}
 ```
 
 ---
@@ -1176,6 +1480,146 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" \
   -H "Content-Type: application/json" \
   -d '{"command": "version"}' \
   http://$VPS_IP:9998/api/cli
+```
+
+---
+
+## Secrets & Security
+
+### POST /api/secrets/reload
+
+Reload secrets using upstream `openclaw secrets reload --json`.
+
+**Request body (optional):**
+
+```json
+{
+  "timeoutMs": 30000
+}
+```
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "secrets reload",
+  "result": {
+    "reloaded": true
+  }
+}
+```
+
+---
+
+### GET /api/secrets/audit
+
+Run upstream `openclaw secrets audit --json`.
+
+**Query parameters:**
+
+| Parameter     | Required | Description |
+|---------------|----------|-------------|
+| `check`       | No       | Enable additional checks |
+| `allowExec`   | No       | Allow exec-based checks |
+| `allow-exec`  | No       | Alias of `allowExec` |
+| `timeoutMs`   | No       | CLI timeout in milliseconds |
+| `timeout`     | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "secrets audit",
+  "result": {
+    "issues": []
+  }
+}
+```
+
+---
+
+### GET /api/security/audit
+
+Run upstream `openclaw security audit --json`.
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `deep`      | No       | Enable deeper checks |
+| `token`     | No       | Optional token for the audit command |
+| `password`  | No       | Optional password for the audit command |
+| `timeoutMs` | No       | CLI timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "security audit",
+  "result": {
+    "summary": "No critical issues"
+  }
+}
+```
+
+---
+
+## Skills
+
+### GET /api/skills/search
+
+Run upstream `openclaw skills search --json`.
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `query`     | No       | Search phrase |
+| `q`         | No       | Alias of `query` |
+| `limit`     | No       | Maximum number of matches |
+| `timeoutMs` | No       | CLI timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "skills search",
+  "query": "gateway",
+  "result": {
+    "skills": []
+  }
+}
+```
+
+---
+
+### GET /api/skills/check
+
+Run upstream `openclaw skills check --json`.
+
+**Query parameters:**
+
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `timeoutMs` | No       | CLI timeout in milliseconds |
+| `timeout`   | No       | Alias of `timeoutMs` |
+
+**Response:**
+
+```json
+{
+  "ok": true,
+  "command": "skills check",
+  "result": {
+    "ready": true
+  }
+}
 ```
 
 ---

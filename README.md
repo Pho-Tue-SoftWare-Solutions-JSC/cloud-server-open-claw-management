@@ -135,6 +135,15 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 **Endpoint**: `http://<IP>:9998`  
 **Authentication**: `Authorization: Bearer <OPENCLAW_MGMT_API_KEY>`
 
+Additional docs:
+- Quick start guide: `docs/quickstart.md`
+- VPS operations guide: `docs/quan-ly-vps.md`
+- Detailed configuration: `docs/cau-hinh.md`
+- Update guide: `docs/update-guide.md`
+- Terminal integration: `docs/terminal-integration.md`
+- Full reference: `docs/api-reference.md`
+- Latest docs parity changelog: `docs/CHANGELOG-docs-api-parity-2026-03-28.md`
+
 ### Public (no auth required)
 
 | Method | Endpoint               | Description                                         |
@@ -149,8 +158,13 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 |--------|------------------|--------------------------------------------|
 | `GET`  | `/api/info`      | Domain, IP, token, status, version, issuer state |
 | `GET`  | `/api/status`    | OpenClaw + Caddy status                    |
+| `GET`  | `/api/openclaw/status` | Upstream `openclaw status` summary / diagnostics |
 | `GET`  | `/api/version`   | OpenClaw version                           |
 | `GET`  | `/api/system`    | CPU, RAM, disk, versions                   |
+| `GET`  | `/api/system/heartbeat/last` | Latest upstream heartbeat event |
+| `POST` | `/api/system/heartbeat/enable` | Enable upstream heartbeats |
+| `POST` | `/api/system/heartbeat/disable` | Disable upstream heartbeats |
+| `GET`  | `/api/system/presence` | Upstream presence summary |
 | `GET`  | `/api/logs`      | Logs (`?lines=100&service=openclaw`)       |
 | `GET`  | `/api/domain`    | Domain + SSL info, ACME email, issuer      |
 | `GET`  | `/api/domain/preflight` | ACME readiness check + diagnostic hints + issue classification |
@@ -169,6 +183,19 @@ curl -X POST -H "Authorization: Bearer $MGMT_KEY" -H "Content-Type: application/
 | `POST`  | `/api/reset`     | Factory reset (`{"confirm":"RESET"}`)              |
 | `POST`  | `/api/self-update` | Update Management API from GitHub                |
 | `PUT`   | `/api/domain`    | Change domain (Caddy auto-provisions ACME SSL, optional email or email reset) |
+
+### Nodes, Secrets, Security & Skills
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/nodes/status` | Upstream node fleet summary |
+| `GET`  | `/api/nodes` | List nodes via upstream CLI |
+| `GET`  | `/api/nodes/:id` | Describe one node |
+| `POST` | `/api/secrets/reload` | Reload secret sources |
+| `GET`  | `/api/secrets/audit` | Audit secret references and checks |
+| `GET`  | `/api/security/audit` | Run upstream security audit |
+| `GET`  | `/api/skills/search` | Search available skills |
+| `GET`  | `/api/skills/check` | Validate skill readiness |
 
 ### AI Providers & Models
 
