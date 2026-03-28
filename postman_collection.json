@@ -8,6 +8,215 @@
   },
   "item": [
     {
+      "name": "MCP",
+      "item": [
+        {
+          "name": "List MCP Servers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/mcp",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "List configured MCP servers using `openclaw mcp list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Show MCP Server",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/mcp/context7",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "context7"
+              ]
+            },
+            "description": "Show one MCP server using `openclaw mcp show <name> --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Set MCP Server",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": {\n    \"command\": \"uvx\",\n    \"args\": [\"context7-mcp\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/mcp/context7",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "context7"
+              ]
+            },
+            "description": "Create or update one MCP server using `openclaw mcp set <name> <json>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Unset MCP Server",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/mcp/context7",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "mcp",
+                "context7"
+              ]
+            },
+            "description": "Remove one MCP server using `openclaw mcp unset <name>`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Hooks",
+      "item": [
+        {
+          "name": "List Hooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/hooks?eligible=true&verbose=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "hooks"
+              ],
+              "query": [
+                {
+                  "key": "eligible",
+                  "value": "true"
+                },
+                {
+                  "key": "verbose",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "List internal hooks using `openclaw hooks list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Hooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/hooks/check",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "hooks",
+                "check"
+              ]
+            },
+            "description": "Check hook eligibility status using `openclaw hooks check --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Hook Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/hooks/example-hook",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "hooks",
+                "example-hook"
+              ]
+            },
+            "description": "Inspect one hook using `openclaw hooks info <name> --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Enable Hook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/hooks/example-hook/enable",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "hooks",
+                "example-hook",
+                "enable"
+              ]
+            },
+            "description": "Enable one hook using `openclaw hooks enable <name>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Disable Hook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/hooks/example-hook/disable",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "hooks",
+                "example-hook",
+                "disable"
+              ]
+            },
+            "description": "Disable one hook using `openclaw hooks disable <name>`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Directory",
       "item": [
         {
@@ -244,6 +453,152 @@
           "response": []
         },
         {
+          "name": "Set Default Model",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"anthropic/claude-sonnet-4\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/default",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "default"
+              ]
+            },
+            "description": "Set the default model using `openclaw models set <model>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Image Model",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai/gpt-image-1\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/image-default",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "image-default"
+              ]
+            },
+            "description": "Set the default image model using `openclaw models set-image <model>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Model Auth Order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/auth-order?provider=anthropic&agentId=main",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "auth-order"
+              ],
+              "query": [
+                {
+                  "key": "provider",
+                  "value": "anthropic"
+                },
+                {
+                  "key": "agentId",
+                  "value": "main"
+                }
+              ]
+            },
+            "description": "Read per-agent auth order override using `openclaw models auth order get --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Set Model Auth Order",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"anthropic\",\n  \"agentId\": \"main\",\n  \"order\": [\n    \"anthropic:default\",\n    \"anthropic:manual\"\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/auth-order",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "auth-order"
+              ]
+            },
+            "description": "Set per-agent auth order override using `openclaw models auth order set`."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Model Auth Order",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"anthropic\",\n  \"agentId\": \"main\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/auth-order",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "auth-order"
+              ]
+            },
+            "description": "Clear per-agent auth order override using `openclaw models auth order clear`."
+          },
+          "response": []
+        },
+        {
           "name": "List Model Aliases",
           "request": {
             "method": "GET",
@@ -288,8 +643,7 @@
                 "aliases"
               ]
             },
-            "description": "Create or update a model alias using `openclaw models aliases add`.
-"
+            "description": "Create or update a model alias using `openclaw models aliases add`."
           },
           "response": []
         },
@@ -359,8 +713,7 @@
                 "fallbacks"
               ]
             },
-            "description": "Add a fallback model using `openclaw models fallbacks add`.
-"
+            "description": "Add a fallback model using `openclaw models fallbacks add`."
           },
           "response": []
         },
@@ -492,6 +845,134 @@
               ]
             },
             "description": "Clear all image fallback models using `openclaw models image-fallbacks clear`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Plugins",
+      "item": [
+        {
+          "name": "List Plugins",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/plugins?enabled=false&verbose=false",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "plugins"
+              ],
+              "query": [
+                {
+                  "key": "enabled",
+                  "value": "false"
+                },
+                {
+                  "key": "verbose",
+                  "value": "false"
+                }
+              ]
+            },
+            "description": "List discovered plugins using `openclaw plugins list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Inspect All Plugins",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/plugins/inspect?all=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "plugins",
+                "inspect"
+              ],
+              "query": [
+                {
+                  "key": "all",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Inspect all plugins using `openclaw plugins inspect --all --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Inspect One Plugin",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/plugins/inspect?id=discord",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "plugins",
+                "inspect"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "discord"
+                }
+              ]
+            },
+            "description": "Inspect one plugin using `openclaw plugins inspect <id> --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Enable Plugin",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/plugins/discord/enable",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "plugins",
+                "discord",
+                "enable"
+              ]
+            },
+            "description": "Enable one plugin using `openclaw plugins enable <id>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Disable Plugin",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/plugins/discord/disable",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "plugins",
+                "discord",
+                "disable"
+              ]
+            },
+            "description": "Disable one plugin using `openclaw plugins disable <id>`."
           },
           "response": []
         }
@@ -3075,6 +3556,32 @@
           "response": []
         },
         {
+          "name": "List Upstream Channels",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/channels/upstream?usage=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "channels",
+                "upstream"
+              ],
+              "query": [
+                {
+                  "key": "usage",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "List configured channels via upstream `openclaw channels list --json`."
+          },
+          "response": []
+        },
+        {
           "name": "Get Channel Capabilities",
           "request": {
             "method": "GET",
@@ -3291,6 +3798,58 @@
           ]
         },
         {
+          "name": "Search Skills",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/skills/search?query=vps%20audit&limit=10",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "skills",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "vps audit",
+                  "description": "Optional ClawHub skill search query"
+                },
+                {
+                  "key": "limit",
+                  "value": "10",
+                  "description": "Optional max results"
+                }
+              ]
+            },
+            "description": "Search ClawHub skills using upstream `openclaw skills search --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Check Skills",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/skills/check",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "skills",
+                "check"
+              ]
+            },
+            "description": "Run upstream `openclaw skills check --json` to see which skills are ready versus missing requirements."
+          },
+          "response": []
+        },
+        {
           "name": "Get Skill Bins",
           "request": {
             "method": "GET",
@@ -3302,6 +3861,263 @@
               ],
               "path": [
                 "api",
+          {
+            "name": "System",
+            "item": [
+              {
+                "name": "Post System Event",
+                "request": {
+                  "method": "POST",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"text\": \"manual-health-check\",\n  \"mode\": \"now\",\n  \"timeoutMs\": 30000\n}"
+                  },
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/system/events",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "system",
+                      "events"
+                    ]
+                  },
+                  "description": "Enqueue a system event through upstream gateway method `system-event`. Use `mode` of `now` or `next-heartbeat`."
+                },
+                "response": []
+              },
+              {
+                "name": "Get System Heartbeat Last",
+                "request": {
+                  "method": "GET",
+                  "header": [],
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/system/heartbeat/last?timeoutMs=30000",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "system",
+                      "heartbeat",
+                      "last"
+                    ],
+                    "query": [
+                      {
+                        "key": "timeoutMs",
+                        "value": "30000",
+                        "description": "Optional upstream gateway timeout"
+                      }
+                    ]
+                  },
+                  "description": "Read the last upstream heartbeat event via gateway method `last-heartbeat`."
+                },
+                "response": []
+              },
+              {
+                "name": "Enable System Heartbeat",
+                "request": {
+                  "method": "POST",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"timeoutMs\": 30000\n}"
+                  },
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/system/heartbeat/enable",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "system",
+                      "heartbeat",
+                      "enable"
+                    ]
+                  },
+                  "description": "Enable upstream heartbeats through gateway method `set-heartbeats` with `enabled=true`."
+                },
+                "response": []
+              },
+              {
+                "name": "Disable System Heartbeat",
+                "request": {
+                  "method": "POST",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"timeoutMs\": 30000\n}"
+                  },
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/system/heartbeat/disable",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "system",
+                      "heartbeat",
+                      "disable"
+                    ]
+                  },
+                  "description": "Disable upstream heartbeats through gateway method `set-heartbeats` with `enabled=false`."
+                },
+                "response": []
+              },
+              {
+                "name": "Get System Presence",
+                "request": {
+                  "method": "GET",
+                  "header": [],
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/system/presence?timeoutMs=30000",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "system",
+                      "presence"
+                    ],
+                    "query": [
+                      {
+                        "key": "timeoutMs",
+                        "value": "30000",
+                        "description": "Optional upstream gateway timeout"
+                      }
+                    ]
+                  },
+                  "description": "List system presence entries via upstream gateway method `system-presence`."
+                },
+                "response": []
+              }
+            ]
+          },
+          {
+            "name": "Secrets",
+            "item": [
+              {
+                "name": "Reload Secrets",
+                "request": {
+                  "method": "POST",
+                  "header": [
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json"
+                    }
+                  ],
+                  "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"timeoutMs\": 30000\n}"
+                  },
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/secrets/reload",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "secrets",
+                      "reload"
+                    ]
+                  },
+                  "description": "Reload runtime secret references using upstream `openclaw secrets reload --json`."
+                },
+                "response": []
+              },
+              {
+                "name": "Audit Secrets",
+                "request": {
+                  "method": "GET",
+                  "header": [],
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/secrets/audit?check=false&allowExec=false&timeoutMs=30000",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "secrets",
+                      "audit"
+                    ],
+                    "query": [
+                      {
+                        "key": "check",
+                        "value": "false",
+                        "description": "When true, upstream audit may return a non-zero exit code if findings exist"
+                      },
+                      {
+                        "key": "allowExec",
+                        "value": "false",
+                        "description": "Allow exec SecretRef checks during audit"
+                      },
+                      {
+                        "key": "timeoutMs",
+                        "value": "30000",
+                        "description": "CLI timeout in milliseconds"
+                      }
+                    ]
+                  },
+                  "description": "Run upstream `openclaw secrets audit --json` to inspect plaintext secrets, unresolved refs, and precedence drift."
+                },
+                "response": []
+              }
+            ]
+          },
+          {
+            "name": "Security",
+            "item": [
+              {
+                "name": "Audit Security",
+                "request": {
+                  "method": "GET",
+                  "header": [],
+                  "url": {
+                    "raw": "{{BASE_URL}}/api/security/audit?deep=false&timeoutMs=60000",
+                    "host": [
+                      "{{BASE_URL}}"
+                    ],
+                    "path": [
+                      "api",
+                      "security",
+                      "audit"
+                    ],
+                    "query": [
+                      {
+                        "key": "deep",
+                        "value": "false",
+                        "description": "Enable best-effort live gateway probe checks"
+                      },
+                      {
+                        "key": "timeoutMs",
+                        "value": "60000",
+                        "description": "CLI timeout in milliseconds"
+                      }
+                    ]
+                  },
+                  "description": "Run upstream `openclaw security audit --json` for security foot-gun detection without applying fixes."
+                },
+                "response": []
+              }
+            ]
+          },
                 "skills",
                 "bins"
               ],

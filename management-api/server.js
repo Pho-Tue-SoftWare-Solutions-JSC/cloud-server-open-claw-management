@@ -3329,6 +3329,18 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
+    // =========================================================================
+    // GET /api/system/heartbeat/last — Upstream last heartbeat event
+    // =========================================================================
+    if (route(req, 'GET', '/api/system/heartbeat/last')) {
+      try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        const timeoutMs = Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000;
+        const result = gatewayMethod('last-heartbeat', {}, { timeoutMs });
+        return json(res, 200, { ok: true, method: 'last-heartbeat', result });
+      } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+    }
+
   // =========================================================================
   // PUT /api/heartbeat/enabled — Enable/disable upstream heartbeats
   // =========================================================================
@@ -3339,6 +3351,44 @@ const server = http.createServer(async (req, res) => {
       delete params.timeoutMs;
       const result = gatewayMethod('set-heartbeats', params, { timeoutMs: Number(body.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'set-heartbeats', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/system/heartbeat/enable — Upstream heartbeat enable
+  // =========================================================================
+  if (route(req, 'POST', '/api/system/heartbeat/enable')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const result = gatewayMethod('set-heartbeats', { enabled: true }, {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, method: 'set-heartbeats', enabled: true, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/system/heartbeat/disable — Upstream heartbeat disable
+  // =========================================================================
+  if (route(req, 'POST', '/api/system/heartbeat/disable')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const result = gatewayMethod('set-heartbeats', { enabled: false }, {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, method: 'set-heartbeats', enabled: false, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/system/presence — Upstream system presence list
+  // =========================================================================
+  if (route(req, 'GET', '/api/system/presence')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const timeoutMs = Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000;
+      const result = gatewayMethod('system-presence', {}, { timeoutMs });
+      return json(res, 200, { ok: true, method: 'system-presence', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3731,6 +3781,171 @@ const server = http.createServer(async (req, res) => {
         json: true
       });
       return json(res, 200, { ok: true, command: 'memory search', query, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/mcp — Upstream MCP server list via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/mcp')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['mcp', 'list'], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'mcp list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/mcp/:name — Upstream MCP server detail via CLI
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/mcp/:name'))) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['mcp', 'show', m.params.name], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'mcp show', name: m.params.name, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // PUT /api/mcp/:name — Upstream MCP server config set via CLI
+  // =========================================================================
+  if ((m = route(req, 'PUT', '/api/mcp/:name'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      if (body.value === undefined) {
+        return json(res, 400, { ok: false, error: 'Missing value' });
+      }
+      const serialized = typeof body.value === 'string' ? body.value : JSON.stringify(body.value);
+      const output = openclawCli(['mcp', 'set', m.params.name, serialized], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'mcp set', name: m.params.name, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/mcp/:name — Upstream MCP server removal via CLI
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/mcp/:name'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['mcp', 'unset', m.params.name], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'mcp unset', name: m.params.name, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/hooks — Upstream hooks listing via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/hooks')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['hooks', 'list'];
+      appendCliOption(args, '--eligible', parseBoolean(url.searchParams.get('eligible')));
+      appendCliOption(args, '--verbose', parseBoolean(url.searchParams.get('verbose')));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'hooks list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/hooks/check — Upstream hooks eligibility check via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/hooks/check')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['hooks', 'check'], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'hooks check', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/hooks/:name — Upstream hook detail via CLI
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/hooks/:name'))) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['hooks', 'info', m.params.name], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'hooks info', name: m.params.name, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/hooks/:name/enable — Upstream hook enable via CLI
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/hooks/:name/enable'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['hooks', 'enable', m.params.name], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'hooks enable', name: m.params.name, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/hooks/:name/disable — Upstream hook disable via CLI
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/hooks/:name/disable'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['hooks', 'disable', m.params.name], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'hooks disable', name: m.params.name, output });
     } catch (e) {
       const stderr = e.stderr ? String(e.stderr).trim() : '';
       const stdout = e.stdout ? String(e.stdout).trim() : '';
@@ -4902,6 +5117,23 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // GET /api/channels/upstream — Upstream configured channel listing via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/channels/upstream')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['channels', 'list'];
+      const includeUsage = parseBoolean(url.searchParams.get('usage') ?? url.searchParams.get('includeUsage') ?? 'true');
+      if (!includeUsage) args.push('--no-usage');
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'channels list', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // GET /api/channels/status — Upstream gateway channel status snapshot
   // =========================================================================
   if (route(req, 'GET', '/api/channels/status')) {
@@ -5119,6 +5351,111 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // PUT /api/models/default — Upstream default model set via CLI
+  // =========================================================================
+  if (route(req, 'PUT', '/api/models/default')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const model = String(body.model || '').trim();
+      if (!model) return json(res, 400, { ok: false, error: 'Missing model' });
+      const output = openclawCli(['models', 'set', model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models set', model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // PUT /api/models/image-default — Upstream image model set via CLI
+  // =========================================================================
+  if (route(req, 'PUT', '/api/models/image-default')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const model = String(body.model || '').trim();
+      if (!model) return json(res, 400, { ok: false, error: 'Missing model' });
+      const output = openclawCli(['models', 'set-image', model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models set-image', model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/models/auth-order — Upstream auth order read via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/models/auth-order')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const provider = String(url.searchParams.get('provider') || '').trim();
+      if (!provider) return json(res, 400, { ok: false, error: 'Missing provider' });
+      const args = ['models', 'auth', 'order', 'get', '--provider', provider];
+      appendCliOption(args, '--agent', url.searchParams.get('agentId') || url.searchParams.get('agent'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'models auth order get', provider, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // PUT /api/models/auth-order — Upstream auth order set via CLI
+  // =========================================================================
+  if (route(req, 'PUT', '/api/models/auth-order')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const provider = String(body.provider || '').trim();
+      const order = toStringArrayInput(body.order || body.profileIds);
+      if (!provider) return json(res, 400, { ok: false, error: 'Missing provider' });
+      if (order.length === 0) return json(res, 400, { ok: false, error: 'Missing order/profileIds' });
+      const args = ['models', 'auth', 'order', 'set', '--provider', provider];
+      appendCliOption(args, '--agent', body.agentId || body.agent);
+      args.push(...order);
+      const output = openclawCli(args, {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models auth order set', provider, order, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/models/auth-order — Upstream auth order clear via CLI
+  // =========================================================================
+  if (route(req, 'DELETE', '/api/models/auth-order')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const provider = String(body.provider || body.name || '').trim();
+      if (!provider) return json(res, 400, { ok: false, error: 'Missing provider' });
+      const args = ['models', 'auth', 'order', 'clear', '--provider', provider];
+      appendCliOption(args, '--agent', body.agentId || body.agent);
+      const output = openclawCli(args, {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models auth order clear', provider, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
   // GET /api/models/aliases — Upstream model alias listing via CLI
   // =========================================================================
   if (route(req, 'GET', '/api/models/aliases')) {
@@ -5317,8 +5654,200 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // GET /api/plugins — Upstream plugin listing via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/plugins')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['plugins', 'list'];
+      appendCliOption(args, '--enabled', parseBoolean(url.searchParams.get('enabled')));
+      appendCliOption(args, '--verbose', parseBoolean(url.searchParams.get('verbose')));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'plugins list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/plugins/inspect — Upstream plugin inspection via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/plugins/inspect')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['plugins', 'inspect'];
+      const pluginId = String(url.searchParams.get('id') || '').trim();
+      const inspectAll = parseBoolean(url.searchParams.get('all'));
+      if (inspectAll) {
+        args.push('--all');
+      } else if (pluginId) {
+        args.push(pluginId);
+      } else {
+        return json(res, 400, { ok: false, error: 'Missing id or all=true' });
+      }
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'plugins inspect', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/plugins/:id/enable — Upstream plugin enable via CLI
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/plugins/:id/enable'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['plugins', 'enable', m.params.id], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'plugins enable', id: m.params.id, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/plugins/:id/disable — Upstream plugin disable via CLI
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/plugins/:id/disable'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['plugins', 'disable', m.params.id], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'plugins disable', id: m.params.id, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/secrets/reload — Upstream secrets reload via CLI
+  // =========================================================================
+  if (route(req, 'POST', '/api/secrets/reload')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const result = openclawCli(['secrets', 'reload'], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'secrets reload', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/secrets/audit — Upstream secrets audit via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/secrets/audit')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['secrets', 'audit'];
+      appendCliOption(args, '--check', parseBoolean(url.searchParams.get('check')));
+      appendCliOption(args, '--allow-exec', parseBoolean(url.searchParams.get('allowExec') || url.searchParams.get('allow-exec')));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'secrets audit', result });
+    } catch (e) {
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      try {
+        const result = stdout ? parseCliJsonOutput(stdout) : null;
+        if (result) {
+          return json(res, 200, {
+            ok: true,
+            command: 'secrets audit',
+            exitCode: Number(e.status || e.code || 1) || 1,
+            result
+          });
+        }
+      } catch {}
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/security/audit — Upstream security audit via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/security/audit')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['security', 'audit'];
+      appendCliOption(args, '--deep', parseBoolean(url.searchParams.get('deep')));
+      appendCliOption(args, '--token', url.searchParams.get('token'));
+      appendCliOption(args, '--password', url.searchParams.get('password'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 60000) || 60000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'security audit', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
   // GET /api/skills — List available skills across workspace/managed roots
   // =========================================================================
+  if (route(req, 'GET', '/api/skills/search')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['skills', 'search'];
+      const query = (url.searchParams.get('query') || url.searchParams.get('q') || '').trim();
+      if (query) args.push(...query.split(/\s+/).filter(Boolean));
+      appendCliOption(args, '--limit', url.searchParams.get('limit'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'skills search', query: query || null, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/skills/check — Upstream skill readiness check via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/skills/check')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['skills', 'check'], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'skills check', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
   if (route(req, 'GET', '/api/skills')) {
     try {
       const url = new URL(req.url, `http://${req.headers.host}`);
