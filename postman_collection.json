@@ -8,6 +8,496 @@
   },
   "item": [
     {
+      "name": "Directory",
+      "item": [
+        {
+          "name": "Get Directory Self",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/directory/self?channel=slack",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "directory",
+                "self"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "slack"
+                }
+              ]
+            },
+            "description": "Show the connected account identity using `openclaw directory self --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Directory Peers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/directory/peers?channel=slack&query=alice&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "directory",
+                "peers"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "slack"
+                },
+                {
+                  "key": "query",
+                  "value": "alice"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Search peer/contact IDs using `openclaw directory peers list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Directory Groups",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/directory/groups?channel=discord&limit=20",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "directory",
+                "groups"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "discord"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "List available groups/channels using `openclaw directory groups list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Group Members",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/directory/groups/group-123/members?channel=discord&limit=50",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "directory",
+                "groups",
+                "group-123",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "discord"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "List members for a specific group using `openclaw directory groups members --json` with `--group-id`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Gateway",
+      "item": [
+        {
+          "name": "Get Gateway Usage Cost",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/gateway/usage-cost?days=30",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "gateway",
+                "usage-cost"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30"
+                }
+              ]
+            },
+            "description": "Fetch upstream usage cost summary through gateway RPC `usage.cost`."
+          },
+          "response": []
+        },
+        {
+          "name": "Discover Gateways",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/gateway/discover?timeoutMs=2000",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "gateway",
+                "discover"
+              ],
+              "query": [
+                {
+                  "key": "timeoutMs",
+                  "value": "2000"
+                }
+              ]
+            },
+            "description": "Discover local or wide-area gateways using upstream `openclaw gateway discover --json`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Models",
+      "item": [
+        {
+          "name": "Get Models Catalog",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models"
+              ]
+            },
+            "description": "Fetch the upstream model catalog through gateway method `models.list`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Models Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/status?agentId=main&probe=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "agentId",
+                  "value": "main"
+                },
+                {
+                  "key": "probe",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Inspect configured model state via upstream `openclaw models status --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Model Aliases",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/aliases",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "aliases"
+              ]
+            },
+            "description": "List model aliases using `openclaw models aliases list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Model Alias",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alias\": \"fast-chat\",\n  \"model\": \"anthropic/claude-sonnet-4\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/aliases",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "aliases"
+              ]
+            },
+            "description": "Create or update a model alias using `openclaw models aliases add`.
+"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Model Alias",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/aliases/fast-chat",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "aliases",
+                "fast-chat"
+              ]
+            },
+            "description": "Remove a model alias using `openclaw models aliases remove <alias>`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Model Fallbacks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/fallbacks",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "fallbacks"
+              ]
+            },
+            "description": "List fallback models using `openclaw models fallbacks list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Model Fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai/gpt-4.1-mini\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/fallbacks",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "fallbacks"
+              ]
+            },
+            "description": "Add a fallback model using `openclaw models fallbacks add`.
+"
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Model Fallback",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/fallbacks/openai%2Fgpt-4.1-mini",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "fallbacks",
+                "openai%2Fgpt-4.1-mini"
+              ]
+            },
+            "description": "Remove one fallback model using `openclaw models fallbacks remove <model>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Model Fallbacks",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/fallbacks",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "fallbacks"
+              ]
+            },
+            "description": "Clear all fallback models using `openclaw models fallbacks clear`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Image Fallbacks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/image-fallbacks",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "image-fallbacks"
+              ]
+            },
+            "description": "List image fallback models using `openclaw models image-fallbacks list --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Add Image Fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"openai/gpt-image-1\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/image-fallbacks",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "image-fallbacks"
+              ]
+            },
+            "description": "Add an image fallback model using `openclaw models image-fallbacks add`."
+          },
+          "response": []
+        },
+        {
+          "name": "Remove Image Fallback",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/image-fallbacks/openai%2Fgpt-image-1",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "image-fallbacks",
+                "openai%2Fgpt-image-1"
+              ]
+            },
+            "description": "Remove one image fallback model using `openclaw models image-fallbacks remove <model>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear Image Fallbacks",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/models/image-fallbacks",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "models",
+                "image-fallbacks"
+              ]
+            },
+            "description": "Clear all image fallback models using `openclaw models image-fallbacks clear`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Service Info",
       "item": [
         {
@@ -1190,6 +1680,313 @@
       ]
     },
     {
+      "name": "Sessions",
+      "item": [
+        {
+          "name": "List Sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/sessions?agent=main&allAgents=false",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "sessions"
+              ],
+              "query": [
+                {
+                  "key": "agent",
+                  "value": "main",
+                  "description": "Optional agent id"
+                },
+                {
+                  "key": "allAgents",
+                  "value": "false",
+                  "description": "Set true to aggregate all configured agents"
+                }
+              ]
+            },
+            "description": "List stored OpenClaw sessions using the upstream `openclaw sessions --json` command. Supports `agent`, `store`, `active`, and `allAgents=true`."
+          },
+          "response": [
+            {
+              "name": "Success",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{BASE_URL}}/api/sessions?agent=main&allAgents=false",
+                  "host": [
+                    "{{BASE_URL}}"
+                  ],
+                  "path": [
+                    "api",
+                    "sessions"
+                  ],
+                  "query": [
+                    {
+                      "key": "agent",
+                      "value": "main",
+                      "description": "Optional agent id"
+                    },
+                    {
+                      "key": "allAgents",
+                      "value": "false",
+                      "description": "Set true to aggregate all configured agents"
+                    }
+                  ]
+                },
+                "description": "List stored OpenClaw sessions using the upstream `openclaw sessions --json` command. Supports `agent`, `store`, `active`, and `allAgents=true`."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"ok\": true,\n  \"command\": \"sessions\",\n  \"result\": {\n    \"sessions\": [\n      {\n        \"key\": \"agent:main:default\",\n        \"agentId\": \"main\",\n        \"updatedAt\": \"2026-03-27T08:00:00.000Z\"\n      }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Cleanup Sessions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agent\": \"main\",\n  \"dryRun\": true,\n  \"fixMissing\": true\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/sessions/cleanup",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "cleanup"
+              ]
+            },
+            "description": "Run upstream session store maintenance. Body supports `store`, `agent`, `allAgents`, `dryRun`, `enforce`, `fixMissing`, and `activeKey`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Backup",
+      "item": [
+        {
+          "name": "Create Backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"output\": \"/opt/openclaw/backups/openclaw-backup.tgz\",\n  \"verify\": true,\n  \"onlyConfig\": false\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/backup/create",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "backup",
+                "create"
+              ]
+            },
+            "description": "Create a backup archive via upstream `openclaw backup create --json`. Supports `output`, `dryRun`, `verify`, `onlyConfig`, and `includeWorkspace=false`."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Backup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"archive\": \"/opt/openclaw/backups/openclaw-backup.tgz\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/backup/verify",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "backup",
+                "verify"
+              ]
+            },
+            "description": "Verify one backup archive through upstream `openclaw backup verify --json`. Requires `archive` path in the request body."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cron",
+      "item": [
+        {
+          "name": "Get Cron Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/cron/status",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "status"
+              ]
+            },
+            "description": "Return upstream cron scheduler status via gateway method `cron.status`."
+          },
+          "response": []
+        },
+        {
+          "name": "List Cron Jobs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/cron/jobs?all=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "jobs"
+              ],
+              "query": [
+                {
+                  "key": "all",
+                  "value": "true",
+                  "description": "Include disabled jobs"
+                }
+              ]
+            },
+            "description": "List cron jobs via gateway method `cron.list`. Query `all=true` maps to `includeDisabled`."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Cron Job",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"heartbeat-reminder\",\n  \"schedule\": {\n    \"kind\": \"interval\",\n    \"everyMs\": 3600000\n  },\n  \"sessionTarget\": \"main\",\n  \"wakeMode\": \"now\",\n  \"payload\": {\n    \"kind\": \"systemEvent\",\n    \"text\": \"hourly-health-check\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/cron/jobs",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "jobs"
+              ]
+            },
+            "description": "Create a cron job using upstream gateway method `cron.add`. Send the same structured payload expected by the gateway method."
+          },
+          "response": []
+        },
+        {
+          "name": "Patch Cron Job",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patch\": {\n    \"enabled\": false\n  }\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/cron/jobs/job-123",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "jobs",
+                "job-123"
+              ]
+            },
+            "description": "Patch one cron job via gateway method `cron.update`. You can send either a top-level `patch` object or raw patch fields in the body."
+          },
+          "response": []
+        },
+        {
+          "name": "Run Cron Job Now",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"force\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/cron/jobs/job-123/run",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "jobs",
+                "job-123",
+                "run"
+              ]
+            },
+            "description": "Run a cron job immediately via gateway method `cron.run`. Use `{ \"mode\": \"due\" }` or `{ \"due\": true }` for due-only execution."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Config: Model & API Key",
       "item": [
         {
@@ -1235,6 +2032,52 @@
               "body": "{\n  \"ok\": true,\n  \"provider\": \"anthropic\",\n  \"model\": \"anthropic/claude-opus-4-5\",\n  \"apiKeys\": {\n    \"anthropic\": \"sk-ant-a...wxyz\",\n    \"openai\": null,\n    \"gemini\": null\n  },\n  \"config\": {\n    \"agents\": {\n      \"defaults\": {\n        \"model\": { \"primary\": \"anthropic/claude-opus-4-5\" },\n        \"maxConcurrent\": 4,\n        \"subagents\": { \"maxConcurrent\": 8 }\n      }\n    },\n    \"gateway\": {\n      \"mode\": \"local\",\n      \"bind\": \"0.0.0.0\",\n      \"auth\": { \"token\": \"***\" },\n      \"trustedProxies\": [\"172.16.0.0/12\", \"10.0.0.0/8\", \"192.168.0.0/16\"]\n    },\n    \"browser\": {\n      \"headless\": true,\n      \"defaultProfile\": \"openclaw\",\n      \"noSandbox\": true\n    }\n  }\n}"
             }
           ]
+        },
+        {
+          "name": "Get Config Value",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/get?path=agents.defaults.model.primary",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "config",
+                "get"
+              ],
+              "query": [
+                {
+                  "key": "path",
+                  "value": "agents.defaults.model.primary"
+                }
+              ]
+            },
+            "description": "Read one config value by dot path, similar to upstream `openclaw config get <path>`."
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/validate",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "config",
+                "validate"
+              ]
+            },
+            "description": "Run a management-layer config validation pass inspired by upstream `openclaw config validate`."
+          },
+          "response": []
         },
         {
           "name": "Change Provider & Model",
@@ -1390,6 +2233,35 @@
               ]
             },
             "description": "Remove one API key for a provider that supports API-key auth. OAuth-only providers such as `openai-codex` are rejected and must be managed with `/api/config/chatgpt-oauth/*` endpoints."
+          },
+          "response": []
+        },
+        {
+          "name": "Unset Config Value",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path\": \"channels.discord.legacyToken\",\n  \"restart\": false\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/config/unset",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "config",
+                "unset"
+              ]
+            },
+            "description": "Remove one config value by dot path, similar to upstream `openclaw config unset <path>`."
           },
           "response": []
         },
@@ -2174,6 +3046,126 @@
               "body": "{\n  \"ok\": true,\n  \"channel\": \"telegram\",\n  \"removed\": true\n}"
             }
           ]
+        },
+        {
+          "name": "Get Channel Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/channels/status?probe=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "channels",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "probe",
+                  "value": "true",
+                  "description": "Optional upstream probe flag"
+                }
+              ]
+            },
+            "description": "Fetch upstream channel status snapshot from gateway method `channels.status`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Channel Capabilities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/channels/capabilities?channel=discord&account=default",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "channels",
+                "capabilities"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "discord",
+                  "description": "Optional channel name"
+                },
+                {
+                  "key": "account",
+                  "value": "default",
+                  "description": "Optional account id"
+                }
+              ]
+            },
+            "description": "Run upstream `openclaw channels capabilities --json` to inspect provider features, scopes, or target permissions."
+          },
+          "response": []
+        },
+        {
+          "name": "Resolve Channel Targets",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"telegram\",\n  \"entries\": [\n    \"@openclaw_ops\",\n    \"123456789\"\n  ],\n  \"kind\": \"auto\"\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/channels/resolve",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "channels",
+                "resolve"
+              ]
+            },
+            "description": "Resolve user/group names to channel IDs through upstream `openclaw channels resolve --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Channel Logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/channels/logs?channel=all&lines=200",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "channels",
+                "logs"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "all",
+                  "description": "Channel alias or all"
+                },
+                {
+                  "key": "lines",
+                  "value": "200",
+                  "description": "Number of lines to fetch"
+                }
+              ]
+            },
+            "description": "Read recent channel logs from the upstream gateway log file via `openclaw channels logs --json`."
+          },
+          "response": []
         }
       ]
     },
@@ -2766,6 +3758,32 @@
       "name": "Update",
       "item": [
         {
+          "name": "Get Update Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/update/status?channel=stable",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "update",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "channel",
+                  "value": "stable"
+                }
+              ]
+            },
+            "description": "Get upstream update channel and version status using the `openclaw update status --json` CLI surface."
+          },
+          "response": []
+        },
+        {
           "name": "Run Update",
           "request": {
             "method": "POST",
@@ -2791,6 +3809,104 @@
               ]
             },
             "description": "Run the upstream update pipeline and schedule restart only on success."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Memory",
+      "item": [
+        {
+          "name": "Get Memory Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/memory/status?agentId=main&deep=true",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "status"
+              ],
+              "query": [
+                {
+                  "key": "agentId",
+                  "value": "main"
+                },
+                {
+                  "key": "deep",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Get upstream memory index and embedding-provider status using `openclaw memory status --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Reindex Memory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"main\",\n  \"force\": true,\n  \"timeoutMs\": 120000\n}"
+            },
+            "url": {
+              "raw": "{{BASE_URL}}/api/memory/index",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "index"
+              ]
+            },
+            "description": "Trigger upstream memory reindexing using `openclaw memory index --force --json`."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Memory",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{BASE_URL}}/api/memory/search?query=deployment&agentId=main&maxResults=5",
+              "host": [
+                "{{BASE_URL}}"
+              ],
+              "path": [
+                "api",
+                "memory",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "deployment"
+                },
+                {
+                  "key": "agentId",
+                  "value": "main"
+                },
+                {
+                  "key": "maxResults",
+                  "value": "5"
+                }
+              ]
+            },
+            "description": "Search upstream memory entries using `openclaw memory search --json`."
           },
           "response": []
         }

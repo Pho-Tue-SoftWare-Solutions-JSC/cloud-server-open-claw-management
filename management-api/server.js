@@ -2049,6 +2049,14 @@ function parseLooseValue(value) {
   return trimmed;
 }
 
+function parseBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim().toLowerCase();
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
+}
+
 function normalizeGatewayParams(input = {}) {
   const out = {};
   for (const [key, value] of Object.entries(input || {})) {
@@ -2069,6 +2077,30 @@ function parseCliJsonOutput(raw) {
     try { return JSON.parse(lines[i]); } catch {}
   }
   return { raw: text };
+}
+
+function appendCliOption(args, flag, value) {
+  if (value === undefined || value === null || value === '' || value === false) return;
+  if (value === true) {
+    args.push(flag);
+    return;
+  }
+  args.push(flag, String(value));
+}
+
+function toStringArrayInput(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => String(item || '').trim())
+      .filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 function collectNestedValuesByKey(value, keyName, results = []) {
@@ -3138,6 +3170,87 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // GET /api/sessions — Upstream session inventory
+  // =========================================================================
+  if (route(req, 'GET', '/api/sessions')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['sessions'];
+      appendCliOption(args, '--store', url.searchParams.get('store'));
+      appendCliOption(args, '--agent', url.searchParams.get('agent'));
+      appendCliOption(args, '--active', url.searchParams.get('active'));
+      if (url.searchParams.get('allAgents') === 'true' || url.searchParams.get('all-agents') === 'true') {
+        args.push('--all-agents');
+      }
+      const result = openclawCli(args, {
+        json: true,
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'sessions', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/sessions/cleanup — Upstream session maintenance
+  // =========================================================================
+  if (route(req, 'POST', '/api/sessions/cleanup')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const args = ['sessions', 'cleanup'];
+      appendCliOption(args, '--store', body.store);
+      appendCliOption(args, '--agent', body.agent);
+      appendCliOption(args, '--active-key', body.activeKey);
+      if (body.allAgents === true) args.push('--all-agents');
+      if (body.dryRun === true) args.push('--dry-run');
+      if (body.enforce === true) args.push('--enforce');
+      if (body.fixMissing === true) args.push('--fix-missing');
+      const result = openclawCli(args, {
+        json: true,
+        timeoutMs: Number(body.timeoutMs || body.timeout || 60000) || 60000
+      });
+      return json(res, 200, { ok: true, command: 'sessions cleanup', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/backup/create — Upstream backup archive creation
+  // =========================================================================
+  if (route(req, 'POST', '/api/backup/create')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const args = ['backup', 'create'];
+      appendCliOption(args, '--output', body.output);
+      if (body.dryRun === true) args.push('--dry-run');
+      if (body.verify === true) args.push('--verify');
+      if (body.onlyConfig === true) args.push('--only-config');
+      if (body.includeWorkspace === false) args.push('--no-include-workspace');
+      const result = openclawCli(args, {
+        json: true,
+        timeoutMs: Number(body.timeoutMs || body.timeout || 180000) || 180000
+      });
+      return json(res, 200, { ok: true, command: 'backup create', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/backup/verify — Upstream backup archive verification
+  // =========================================================================
+  if (route(req, 'POST', '/api/backup/verify')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const archive = String(body.archive || body.path || '').trim();
+      if (!archive) {
+        return json(res, 400, { ok: false, error: 'archive is required' });
+      }
+      const result = openclawCli(['backup', 'verify', archive], {
+        json: true,
+        timeoutMs: Number(body.timeoutMs || body.timeout || 120000) || 120000
+      });
+      return json(res, 200, { ok: true, command: 'backup verify', archive, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // GET /api/health — Upstream health snapshot
   // =========================================================================
   if (route(req, 'GET', '/api/health')) {
@@ -3169,6 +3282,41 @@ const server = http.createServer(async (req, res) => {
       const result = gatewayMethod('gateway.identity.get', {}, { timeoutMs: 30000 });
       return json(res, 200, { ok: true, method: 'gateway.identity.get', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/gateway/usage-cost — Upstream usage cost summary
+  // =========================================================================
+  if (route(req, 'GET', '/api/gateway/usage-cost')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const days = Math.max(1, Number(url.searchParams.get('days') || 30) || 30);
+      const result = gatewayMethod('usage.cost', { days }, { timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'usage.cost', days, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/gateway/discover — Discover local/wide-area gateways via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/gateway/discover')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['gateway', 'discover'];
+      appendCliOption(args, '--timeout', url.searchParams.get('timeoutMs') || url.searchParams.get('timeout'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 10000) || 10000,
+        json: true
+      });
+      const beacons = Array.isArray(result?.beacons)
+        ? result.beacons
+        : (Array.isArray(result) ? result : (Array.isArray(result?.results) ? result.results : []));
+      return json(res, 200, { ok: true, command: 'gateway discover', count: beacons.length, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
   }
 
   // =========================================================================
@@ -3402,6 +3550,308 @@ const server = http.createServer(async (req, res) => {
       const body = await parseBody(req).catch(() => ({}));
       const result = gatewayMethod('update.run', body, { timeoutMs: Number(body.timeoutMs || 180000) || 180000 });
       return json(res, 200, { ok: true, method: 'update.run', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/directory/self — Upstream current account identity via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/directory/self')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['directory', 'self'];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--account', url.searchParams.get('accountId') || url.searchParams.get('account'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'directory self', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/directory/peers — Upstream peer directory lookup via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/directory/peers')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['directory', 'peers', 'list'];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--account', url.searchParams.get('accountId') || url.searchParams.get('account'));
+      appendCliOption(args, '--query', url.searchParams.get('query') || url.searchParams.get('q'));
+      appendCliOption(args, '--limit', url.searchParams.get('limit'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'directory peers list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/directory/groups — Upstream group directory lookup via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/directory/groups')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['directory', 'groups', 'list'];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--account', url.searchParams.get('accountId') || url.searchParams.get('account'));
+      appendCliOption(args, '--query', url.searchParams.get('query') || url.searchParams.get('q'));
+      appendCliOption(args, '--limit', url.searchParams.get('limit'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'directory groups list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/directory/groups/:groupId/members — Upstream group member lookup via CLI
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/directory/groups/:groupId/members'))) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const groupId = String(m.params.groupId || '').trim();
+      if (!groupId) return json(res, 400, { ok: false, error: 'Missing groupId' });
+      const args = ['directory', 'groups', 'members', '--group-id', groupId];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--account', url.searchParams.get('accountId') || url.searchParams.get('account'));
+      appendCliOption(args, '--limit', url.searchParams.get('limit'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'directory groups members', groupId, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/update/status — Upstream update channel + version status via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/update/status')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['update', 'status'];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--tag', url.searchParams.get('tag'));
+      appendCliOption(args, '--dry-run', parseBoolean(url.searchParams.get('dryRun') ?? url.searchParams.get('dry-run')));
+      appendCliOption(args, '--no-restart', parseBoolean(url.searchParams.get('noRestart') ?? url.searchParams.get('no-restart')));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 60000) || 60000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'update status', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/memory/status — Upstream memory index/provider status via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/memory/status')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['memory', 'status'];
+      appendCliOption(args, '--agent', url.searchParams.get('agentId') || url.searchParams.get('agent'));
+      appendCliOption(args, '--deep', parseBoolean(url.searchParams.get('deep')));
+      appendCliOption(args, '--index', parseBoolean(url.searchParams.get('index')));
+      appendCliOption(args, '--verbose', parseBoolean(url.searchParams.get('verbose')));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 60000) || 60000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'memory status', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/memory/index — Upstream memory reindex via CLI
+  // =========================================================================
+  if (route(req, 'POST', '/api/memory/index')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const args = ['memory', 'index'];
+      appendCliOption(args, '--agent', body.agentId || body.agent);
+      appendCliOption(args, '--force', parseBoolean(body.force));
+      appendCliOption(args, '--verbose', parseBoolean(body.verbose));
+      const result = openclawCli(args, {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 120000) || 120000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'memory index', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/memory/search — Upstream memory search via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/memory/search')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const query = String(url.searchParams.get('query') || url.searchParams.get('q') || '').trim();
+      if (!query) {
+        return json(res, 400, { ok: false, error: 'Missing query' });
+      }
+      const args = ['memory', 'search', query];
+      appendCliOption(args, '--agent', url.searchParams.get('agentId') || url.searchParams.get('agent'));
+      appendCliOption(args, '--max-results', url.searchParams.get('maxResults') || url.searchParams.get('max-results'));
+      appendCliOption(args, '--min-score', url.searchParams.get('minScore') || url.searchParams.get('min-score'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 60000) || 60000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'memory search', query, result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/cron/status — Upstream cron scheduler status
+  // =========================================================================
+  if (route(req, 'GET', '/api/cron/status')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = gatewayMethod('cron.status', {}, { timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'cron.status', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/cron/jobs — Upstream cron job listing
+  // =========================================================================
+  if (route(req, 'GET', '/api/cron/jobs')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const params = normalizeGatewayParams(Object.fromEntries(url.searchParams));
+      if (params.includeDisabled === undefined && params.all !== undefined) {
+        params.includeDisabled = params.all;
+      }
+      delete params.all;
+      delete params.timeout;
+      delete params.timeoutMs;
+      const result = gatewayMethod('cron.list', params, { timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'cron.list', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/cron/jobs — Upstream cron job creation
+  // =========================================================================
+  if (route(req, 'POST', '/api/cron/jobs')) {
+    try {
+      const body = await parseBody(req);
+      const params = { ...body };
+      delete params.timeout;
+      delete params.timeoutMs;
+      const result = gatewayMethod('cron.add', params, { timeoutMs: Number(body.timeoutMs || body.timeout || 60000) || 60000 });
+      return json(res, 200, { ok: true, method: 'cron.add', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // PATCH /api/cron/jobs/:id — Upstream cron job patch
+  // =========================================================================
+  if ((m = route(req, 'PATCH', '/api/cron/jobs/:id'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const patch = isPlainObject(body.patch) ? body.patch : (() => {
+        const copy = { ...body };
+        delete copy.timeout;
+        delete copy.timeoutMs;
+        return copy;
+      })();
+      const result = gatewayMethod('cron.update', { id: m.params.id, patch }, { timeoutMs: Number(body.timeoutMs || body.timeout || 60000) || 60000 });
+      return json(res, 200, { ok: true, method: 'cron.update', id: m.params.id, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/cron/jobs/:id — Upstream cron job removal
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/cron/jobs/:id'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const result = gatewayMethod('cron.remove', { id: m.params.id }, { timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'cron.remove', id: m.params.id, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/cron/jobs/:id/enable — Enable a cron job
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/cron/jobs/:id/enable'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const result = gatewayMethod('cron.update', { id: m.params.id, patch: { enabled: true } }, { timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'cron.update', id: m.params.id, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/cron/jobs/:id/disable — Disable a cron job
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/cron/jobs/:id/disable'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const result = gatewayMethod('cron.update', { id: m.params.id, patch: { enabled: false } }, { timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'cron.update', id: m.params.id, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/cron/jobs/:id/runs — Upstream cron run history
+  // =========================================================================
+  if ((m = route(req, 'GET', '/api/cron/jobs/:id/runs'))) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const limit = Number(url.searchParams.get('limit') || 50) || 50;
+      const result = gatewayMethod('cron.runs', { id: m.params.id, limit }, { timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000 });
+      return json(res, 200, { ok: true, method: 'cron.runs', id: m.params.id, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/cron/jobs/:id/run — Force or due-run a cron job now
+  // =========================================================================
+  if ((m = route(req, 'POST', '/api/cron/jobs/:id/run'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const mode = body.mode === 'due' || body.due === true ? 'due' : 'force';
+      const result = gatewayMethod('cron.run', { id: m.params.id, mode }, { timeoutMs: Number(body.timeoutMs || body.timeout || 600000) || 600000 });
+      return json(res, 200, { ok: true, method: 'cron.run', id: m.params.id, mode, result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
 
@@ -3782,6 +4232,109 @@ const server = http.createServer(async (req, res) => {
         size: stats.size,
         updatedAt: stats.mtime.toISOString(),
         content
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/config/get?path=... — Read one config value by dot path
+  // =========================================================================
+  if (route(req, 'GET', '/api/config/get')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const path = String(url.searchParams.get('path') || '').trim();
+      if (!path) return json(res, 400, { ok: false, error: 'Missing path' });
+
+      const config = readConfig();
+      const result = getValueAtPath(config, path);
+      if (!result.exists) {
+        return json(res, 404, { ok: false, error: `Path not found: ${path}` });
+      }
+
+      return json(res, 200, {
+        ok: true,
+        path,
+        exists: true,
+        value: redactSensitiveData(result.value, path.split('.').slice(-1)[0]),
+        type: Array.isArray(result.value) ? 'array' : typeof result.value
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // DELETE /api/config/unset — Remove one config value by dot path
+  // =========================================================================
+  if (route(req, 'DELETE', '/api/config/unset')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const path = String(body.path || '').trim();
+      if (!path) return json(res, 400, { ok: false, error: 'Missing path' });
+
+      const config = readConfig();
+      const before = getValueAtPath(config, path);
+      if (!before.exists) {
+        return json(res, 404, { ok: false, error: `Path not found: ${path}` });
+      }
+
+      const removed = deleteValueAtPath(config, path);
+      if (!removed) {
+        return json(res, 500, { ok: false, error: `Failed to unset path: ${path}` });
+      }
+
+      writeConfig(config);
+      if (body.restart !== false) restartManagedService('openclaw');
+
+      return json(res, 200, {
+        ok: true,
+        path,
+        removed: true,
+        restarted: body.restart !== false,
+        previousValue: redactSensitiveData(before.value, path.split('.').slice(-1)[0])
+      });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/config/validate — Validate current config structure and values
+  // =========================================================================
+  if (route(req, 'GET', '/api/config/validate')) {
+    try {
+      const config = readConfig();
+      const issues = [];
+
+      const currentModel = config?.agents?.defaults?.model?.primary || null;
+      if (!currentModel || typeof currentModel !== 'string' || !currentModel.includes('/')) {
+        issues.push({ path: 'agents.defaults.model.primary', severity: 'error', message: 'Default model must be set in provider/model format.' });
+      }
+
+      if (!config?.gateway || typeof config.gateway !== 'object') {
+        issues.push({ path: 'gateway', severity: 'error', message: 'Missing gateway configuration.' });
+      }
+
+      if (!config?.gateway?.auth || typeof config.gateway.auth !== 'object') {
+        issues.push({ path: 'gateway.auth', severity: 'error', message: 'Missing gateway auth configuration.' });
+      } else if (!config.gateway.auth.token || String(config.gateway.auth.token).trim() === '') {
+        issues.push({ path: 'gateway.auth.token', severity: 'warning', message: 'Gateway auth token is empty.' });
+      }
+
+      const providerId = currentModel && typeof currentModel === 'string' ? currentModel.split('/')[0] : null;
+      if (providerId && !(PROVIDERS[providerId] || fs.existsSync(`${TEMPLATES_DIR}/${providerId}.json`))) {
+        issues.push({ path: 'agents.defaults.model.primary', severity: 'warning', message: `Provider "${providerId}" is not a known built-in or custom template.` });
+      }
+
+      const channelKeys = isPlainObject(config?.channels) ? Object.keys(config.channels) : [];
+      for (const channelKey of channelKeys) {
+        const channelValue = config.channels[channelKey];
+        if (!isPlainObject(channelValue)) {
+          issues.push({ path: `channels.${channelKey}`, severity: 'warning', message: 'Channel config should be an object.' });
+        }
+      }
+
+      return json(res, 200, {
+        ok: true,
+        valid: issues.filter(item => item.severity === 'error').length === 0,
+        issueCount: issues.length,
+        issues
       });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
   }
@@ -4364,6 +4917,55 @@ const server = http.createServer(async (req, res) => {
   }
 
   // =========================================================================
+  // GET /api/channels/capabilities — Upstream channel capability audit
+  // =========================================================================
+  if (route(req, 'GET', '/api/channels/capabilities')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['channels', 'capabilities'];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--account', url.searchParams.get('account'));
+      appendCliOption(args, '--target', url.searchParams.get('target'));
+      appendCliOption(args, '--timeout', url.searchParams.get('timeout') || url.searchParams.get('timeoutMs'));
+      const result = openclawCli(args, { json: true, timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000 });
+      return json(res, 200, { ok: true, command: 'channels capabilities', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // POST /api/channels/resolve — Upstream channel/user id resolution
+  // =========================================================================
+  if (route(req, 'POST', '/api/channels/resolve')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const entries = toStringArrayInput(body.entries || body.names || body.targets);
+      if (entries.length === 0) {
+        return json(res, 400, { ok: false, error: 'entries is required (array or comma-separated string)' });
+      }
+      const args = ['channels', 'resolve', ...entries];
+      appendCliOption(args, '--channel', body.channel);
+      appendCliOption(args, '--account', body.account || body.accountId);
+      appendCliOption(args, '--kind', body.kind);
+      const result = openclawCli(args, { json: true, timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000 });
+      return json(res, 200, { ok: true, command: 'channels resolve', entries, result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/channels/logs — Upstream gateway channel log tail
+  // =========================================================================
+  if (route(req, 'GET', '/api/channels/logs')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['channels', 'logs'];
+      appendCliOption(args, '--channel', url.searchParams.get('channel'));
+      appendCliOption(args, '--lines', url.searchParams.get('lines'));
+      const result = openclawCli(args, { json: true, timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000 });
+      return json(res, 200, { ok: true, command: 'channels logs', result });
+    } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
   // POST /api/channels/logout — Upstream gateway logout for channel/account
   // =========================================================================
   if (route(req, 'POST', '/api/channels/logout')) {
@@ -4486,6 +5088,232 @@ const server = http.createServer(async (req, res) => {
       const result = gatewayMethod('models.list', params, { timeoutMs: Number(queryParams.timeoutMs || 30000) || 30000 });
       return json(res, 200, { ok: true, method: 'models.list', result });
     } catch (e) { return json(res, 500, { ok: false, error: e.message }); }
+  }
+
+  // =========================================================================
+  // GET /api/models/status — Upstream configured model status via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/models/status')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['models', 'status'];
+      appendCliOption(args, '--agent', url.searchParams.get('agentId') || url.searchParams.get('agent'));
+      appendCliOption(args, '--check', parseBoolean(url.searchParams.get('check')));
+      appendCliOption(args, '--probe', parseBoolean(url.searchParams.get('probe')));
+      appendCliOption(args, '--probe-provider', url.searchParams.get('probeProvider') || url.searchParams.get('probe-provider'));
+      const probeProfiles = toStringArrayInput(url.searchParams.getAll('probeProfile').length ? url.searchParams.getAll('probeProfile') : (url.searchParams.get('probeProfile') || url.searchParams.get('probe-profile') || ''));
+      for (const profile of probeProfiles) appendCliOption(args, '--probe-profile', profile);
+      appendCliOption(args, '--probe-timeout', url.searchParams.get('probeTimeout') || url.searchParams.get('probe-timeout'));
+      appendCliOption(args, '--probe-concurrency', url.searchParams.get('probeConcurrency') || url.searchParams.get('probe-concurrency'));
+      appendCliOption(args, '--probe-max-tokens', url.searchParams.get('probeMaxTokens') || url.searchParams.get('probe-max-tokens'));
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 60000) || 60000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'models status', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/models/aliases — Upstream model alias listing via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/models/aliases')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const args = ['models', 'aliases', 'list'];
+      const result = openclawCli(args, {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'models aliases list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/models/aliases — Add/update a model alias via CLI
+  // =========================================================================
+  if (route(req, 'POST', '/api/models/aliases')) {
+    try {
+      const body = await parseBody(req);
+      const alias = String(body.alias || '').trim();
+      const model = String(body.model || '').trim();
+      if (!alias || !model) return json(res, 400, { ok: false, error: 'Missing alias or model' });
+      const output = openclawCli(['models', 'aliases', 'add', alias, model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models aliases add', alias, model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/models/aliases/:alias — Remove a model alias via CLI
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/models/aliases/:alias'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['models', 'aliases', 'remove', m.params.alias], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models aliases remove', alias: m.params.alias, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/models/fallbacks — Upstream fallback models via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/models/fallbacks')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['models', 'fallbacks', 'list'], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'models fallbacks list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/models/fallbacks — Add a fallback model via CLI
+  // =========================================================================
+  if (route(req, 'POST', '/api/models/fallbacks')) {
+    try {
+      const body = await parseBody(req);
+      const model = String(body.model || '').trim();
+      if (!model) return json(res, 400, { ok: false, error: 'Missing model' });
+      const output = openclawCli(['models', 'fallbacks', 'add', model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models fallbacks add', model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/models/fallbacks/:model — Remove one fallback model via CLI
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/models/fallbacks/:model'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['models', 'fallbacks', 'remove', m.params.model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models fallbacks remove', model: m.params.model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/models/fallbacks — Clear all fallback models via CLI
+  // =========================================================================
+  if (route(req, 'DELETE', '/api/models/fallbacks')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['models', 'fallbacks', 'clear'], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models fallbacks clear', output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // GET /api/models/image-fallbacks — Upstream image fallback models via CLI
+  // =========================================================================
+  if (route(req, 'GET', '/api/models/image-fallbacks')) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const result = openclawCli(['models', 'image-fallbacks', 'list'], {
+        timeoutMs: Number(url.searchParams.get('timeoutMs') || url.searchParams.get('timeout') || 30000) || 30000,
+        json: true
+      });
+      return json(res, 200, { ok: true, command: 'models image-fallbacks list', result });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // POST /api/models/image-fallbacks — Add an image fallback model via CLI
+  // =========================================================================
+  if (route(req, 'POST', '/api/models/image-fallbacks')) {
+    try {
+      const body = await parseBody(req);
+      const model = String(body.model || '').trim();
+      if (!model) return json(res, 400, { ok: false, error: 'Missing model' });
+      const output = openclawCli(['models', 'image-fallbacks', 'add', model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models image-fallbacks add', model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/models/image-fallbacks/:model — Remove one image fallback via CLI
+  // =========================================================================
+  if ((m = route(req, 'DELETE', '/api/models/image-fallbacks/:model'))) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['models', 'image-fallbacks', 'remove', m.params.model], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models image-fallbacks remove', model: m.params.model, output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
+  }
+
+  // =========================================================================
+  // DELETE /api/models/image-fallbacks — Clear all image fallback models via CLI
+  // =========================================================================
+  if (route(req, 'DELETE', '/api/models/image-fallbacks')) {
+    try {
+      const body = await parseBody(req).catch(() => ({}));
+      const output = openclawCli(['models', 'image-fallbacks', 'clear'], {
+        timeoutMs: Number(body.timeoutMs || body.timeout || 30000) || 30000
+      });
+      return json(res, 200, { ok: true, command: 'models image-fallbacks clear', output });
+    } catch (e) {
+      const stderr = e.stderr ? String(e.stderr).trim() : '';
+      const stdout = e.stdout ? String(e.stdout).trim() : '';
+      return json(res, 500, { ok: false, error: stderr || stdout || e.message });
+    }
   }
 
   // =========================================================================
