@@ -179,8 +179,8 @@ apt_retry apt-get -qqy -o Dpkg::Options::='--force-confdef' -o Dpkg::Options::='
 # 3. Cai dat Node.js 24 (cho OpenClaw + Management API)
 # =============================================================================
 log "Cai dat Node.js 24..."
-if ! command -v node &>/dev/null || [[ "$(node -v)" != v24* ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+if ! command -v node &>/dev/null || [[ "$(node -v)" != v22* ]]; then
+    curl -fsSL https://deb.nodesource.com/setup_11.x | bash -
     apt-get install -y nodejs
 fi
 log "Node.js version: $(node -v)"
