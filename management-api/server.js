@@ -16,7 +16,7 @@ const path = require('path');
 
 const PORT = 9998;
 const MGMT_VERSION = '4.0.0';
-const GITHUB_REPO = 'Pho-Tue-SoftWare-Solutions-JSC/cloud-server-open-claw-management';
+const GITHUB_REPO = 'hitechcloud-vietnamC/cloud-server-open-claw-management';
 const GITHUB_BRANCH = 'main';
 const REPO_RAW = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}`;
 const OPENCLAW_HOME = '/opt/openclaw';
